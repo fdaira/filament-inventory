@@ -205,7 +205,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
         <div class="grid">
           <div class="full">
             <label for="sku">SKU / color code</label>
-            <input id="sku" placeholder="e.g. 10100, 34071, CA04076 or DLZ-US-SL-PLA+V2-BK-1KG" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next">
+            <input id="sku" placeholder="e.g. 10100, 34071, CA04076, 70426" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next">
             <div class="sku-result" id="skuResult" aria-live="polite">Type or scan the code on the spool to fill everything in, or fill the fields yourself.</div>
           </div>
           <div>
@@ -298,7 +298,8 @@ let token = store.get("filamentToken") || "";
 let options = { brands: [], materials: [], colors: [], locations: [], printers: [] };
 let status = "stock";
 let catalog = { brands: {} };
-const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9+]/g, "");
+const BRAND_ALIASES = { geetech: "geeetech", bbl: "bambulab" };  // common spellings
+const norm = (s) => { const n = (s || "").toLowerCase().replace(/[^a-z0-9+]/g, ""); return BRAND_ALIASES[n] || n; };
 function catalogBrand(name) {
   const n = norm(name);
   if (!n) return null;
@@ -480,7 +481,11 @@ $("sku").addEventListener("input", () => {
   const raw = $("sku").value.trim();
   skuDiameter = 1.75;
   if (!raw) return setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
-  const hit = skuIndex.get(normSku(raw));
+  let hit = skuIndex.get(normSku(raw));
+  if (!hit) {  // Geeetech box codes wrap the 5-digit color code: DE39-70426-F, 700-001-1364
+    const m = raw.match(/(?<!\d)(7\d{4})(?!\d)/) || raw.match(/700-0\d\d-(\d{4})(?!\d)/);
+    if (m) hit = skuIndex.get(m[1].length === 5 ? m[1] : "7" + m[1]);
+  }
   if (!hit) return setSkuResult(raw.length >= 5 ? "Not in the catalog: fill in the details below." : "", "miss");
   $("brand").value = brandSpelling(hit.brand);
   $("material").value = hit.type;

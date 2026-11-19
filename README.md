@@ -8,7 +8,8 @@ plus an **MCP server** so Claude (or any MCP client) can read and update the sam
 - **Find & unload** — search by brand, type, color, SKU, location or printer; move a spool onto a
   named printer and return it to stock with the grams left.
 - **Color catalog** — official color names, hex swatches and SKUs for **Bambu Lab, Snapmaker,
-  Sunlu and Polymaker** (about 1,660 colors and over 2,000 SKUs, including refills and 2.85 mm variants).
+  Sunlu, Polymaker and Geeetech** (about 1,800 colors and over 2,200 SKUs, including refills and
+  2.85 mm variants).
 - **Phone-friendly** — works in iPhone Safari and Android Chrome; use *Add to Home Screen* to open
   it full-screen like an app.
 - **Claude integration** — ask "how much black PLA do I have?", "put the blue Polymaker on the
@@ -85,8 +86,9 @@ python3 tools/build_catalog.py
 Sources (names, hex codes and SKUs only):
 
 - **Bambu Lab** — `filaments_color_codes.json` from [Bambu Studio](https://github.com/bambulab/BambuStudio)
-- **Snapmaker, Sunlu, Polymaker** — the public product listings of their US online stores
-- **Hex codes** for Snapmaker, Sunlu and Polymaker — [SpoolmanDB](https://github.com/Donkie/SpoolmanDB)
+- **Snapmaker, Sunlu, Polymaker, Geeetech** — the public product listings of their online stores
+  (for Geeetech, the 5-digit color code inside each store SKU, e.g. `70426`)
+- **Hex codes** for Snapmaker, Sunlu, Polymaker and Geeetech — [SpoolmanDB](https://github.com/Donkie/SpoolmanDB)
   (MIT License, Copyright (c) Daniel Hultgren)
 
 Brand names and trademarks belong to their owners; this project is not affiliated with them.

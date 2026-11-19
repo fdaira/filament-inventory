@@ -11,6 +11,8 @@ Sources (facts only: names, hex codes, SKUs):
                plus refills)
   * Polymaker: SKUs for every spool/refill/weight/diameter from the us.polymaker.com product feed,
                hex from SpoolmanDB
+  * Geeetech:  SpoolmanDB colors + the 5-digit color code (e.g. 70426) found inside the
+               geeetech.com store SKUs (single-color listings only)
   * SpoolmanDB https://github.com/Donkie/SpoolmanDB (MIT License, Copyright (c) Daniel Hultgren)
 """
 
@@ -29,7 +31,7 @@ SPOOLMAN = "https://raw.githubusercontent.com/Donkie/SpoolmanDB/main/filaments/{
 BAMBU_CODES = ("https://raw.githubusercontent.com/bambulab/BambuStudio/master/"
                "resources/profiles/BBL/filament/filaments_color_codes.json")
 STORES = {"snapmaker": "https://us.snapmaker.com", "sunlu": "https://store.sunlu.com",
-          "polymaker": "https://us.polymaker.com"}
+          "polymaker": "https://us.polymaker.com", "geeetech": "https://www.geeetech.com"}
 
 
 # ---------------------------------------------------------------- helpers
@@ -81,7 +83,7 @@ def load_sources(cache: Path | None) -> dict:
             f.write_text(json.dumps(data))
         return data
     src = {f"spoolman_{b}": get(f"spoolman_{b}", lambda b=b: fetch_json(SPOOLMAN.format(b)))
-           for b in ("bambulab", "snapmaker", "sunlu", "polymaker")}
+           for b in ("bambulab", "snapmaker", "sunlu", "polymaker", "geeetech")}
     src["bambu_codes"] = get("bambu_codes", lambda: fetch_json(BAMBU_CODES))
     for b, base in STORES.items():
         src[f"store_{b}"] = get(f"store_{b}", lambda base=base: fetch_store(base))
@@ -100,7 +102,7 @@ UNNAMED = {  # lines SpoolmanDB leaves unnamed: (file, material, first color) ->
     ("sunlu", "PLA", "White (Glow Green)"): "Glow",
 }
 RENAMED = {("bambulab", "PLA", "Velvet Eclipse (Black-Red)"): "Silk Multi-Color"}
-TYPE_ALIASES = {"sunlu": {"WOOD": "PLA Wood"}}
+TYPE_ALIASES = {"sunlu": {"WOOD": "PLA Wood"}, "geeetech": {"PLA Luminous": "PLA Luminous"}}
 
 
 def spoolman_types(key: str, data: dict) -> dict[str, dict]:
@@ -368,6 +370,65 @@ def poly_types(products: list[dict], spoolman: dict) -> dict[str, dict]:
     return types
 
 
+# ---------------------------------------------------------------- Geeetech store
+def geeetech_code(sku: str) -> str | None:
+    """'DE39-70426-F' / '70426-B' / '71360 matteblack 6rolls' -> '70426' / '71360';
+    '700-001-1364' -> '71364' (same code without its leading 7)."""
+    sku = (sku or "").strip()
+    m = re.search(r"(?<!\d)(7\d{4})(?!\d)", sku)
+    if m:
+        return m.group(1)
+    m = re.search(r"700-0\d\d-(\d{4})(?!\d)", sku)
+    return "7" + m.group(1) if m else None
+
+
+def geeetech_type(title: str) -> str | None:
+    m = re.search(r"GEEETECH\s+(.+?)\s+3D Printer Filament", title, re.I)
+    if not m:
+        return None
+    t = re.sub(r"\s+", " ", m.group(1)).strip()
+    mm = re.match(r"^(Silk|Matte)\s+PLA$", t, re.I)  # "Silk PLA" -> "PLA Silk"
+    return f"PLA {mm.group(1).title()}" if mm else t
+
+
+def apply_geeetech(types: dict, products: list[dict]) -> int:
+    n = 0
+    taken: dict[str, str] = {}  # code -> "type|color" already assigned
+    for p in products:
+        label = geeetech_type(p["title"])
+        if not label:
+            continue
+        names = [o["name"].strip().lower() for o in p["options"]]
+        ci = next((i for i, k in enumerate(names) if "color" in k or "颜色" in k), None)
+        if ci is None:
+            continue
+        for v in p["variants"]:
+            color = (v.get(f"option{ci + 1}") or "").strip()
+            code = geeetech_code(v.get("sku") or "")
+            if not color or not code or "+" in color or "(" in color:  # skip mixed-color bundles
+                continue
+            color = re.sub(r"([a-z])([A-Z])", r"\1 \2", color)  # "BoneWhite" -> "Bone White"
+            vlabel = label
+            if label == "PLA":  # specialty PLAs listed on the plain PLA page
+                for prefix, special in (("Wood ", "PLA Wood"), ("Marble ", "PLA Marble"), ("Silk ", "PLA Silk")):
+                    if color.startswith(prefix):
+                        vlabel = special
+                if color.endswith(" Carbon Fiber"):
+                    vlabel, color = "PLA-CF", color[: -len(" Carbon Fiber")]
+            t = types.setdefault(find_type(types, vlabel), {"weight": 1000, "colors": []})
+            words = {w.lower() for w in vlabel.split()} - {"pla", "petg", "abs+", "tpu", "asa"}
+            parts = color.split()
+            while len(parts) > 1 and parts[0].lower() in words:  # "Silk White" in PLA Silk -> "White"
+                parts = parts[1:]
+            color = " ".join(w if w.isupper() else w[:1].upper() + w[1:] for w in parts)
+            key = f"{vlabel}|{color}".lower()
+            if taken.setdefault(code, key) != key:
+                continue
+            add_color(t, color, None, None, code)
+            n += 1
+    return n
+
+
 def dedupe_sunlu_skus(types: dict) -> None:
     """A SKU listed under two lines stays only on the line whose code it shares
     (DLZ-US-SL-<LINE>-<COLOR>-1KG), e.g. HSPLAYG belongs to High Speed Matte, not Matte."""
@@ -398,16 +459,19 @@ def dedupe_sunlu_skus(types: dict) -> None:
 def main() -> None:
     cache = Path(sys.argv[sys.argv.index("--from") + 1]) if "--from" in sys.argv else None
     src = load_sources(cache)
-    sm = {b: spoolman_types(b, src[f"spoolman_{b}"]) for b in ("bambulab", "snapmaker", "sunlu", "polymaker")}
+    sm = {b: spoolman_types(b, src[f"spoolman_{b}"])
+          for b in ("bambulab", "snapmaker", "sunlu", "polymaker", "geeetech")}
     brands = {
         "Bambu Lab": bambu_types(src["bambu_codes"], sm["bambulab"]),
         "Snapmaker": sm["snapmaker"],
         "Sunlu": sm["sunlu"],
         "Polymaker": poly_types(src["store_polymaker"], sm["polymaker"]),
+        "Geeetech": sm["geeetech"],
     }
     applied = {"Snapmaker": apply_snapmaker(brands["Snapmaker"], src["store_snapmaker"]),
-               "Sunlu": apply_sunlu(brands["Sunlu"], src["store_sunlu"])}
-    for b in ("Snapmaker", "Sunlu"):  # store-only colors: borrow the brand's hex for the same color name
+               "Sunlu": apply_sunlu(brands["Sunlu"], src["store_sunlu"]),
+               "Geeetech": apply_geeetech(brands["Geeetech"], src["store_geeetech"])}
+    for b in ("Snapmaker", "Sunlu", "Geeetech"):  # store-only colors: borrow the brand's hex for the same color name
         known = {k: c["hex"] for t in brands[b].values() for c in t["colors"] if c["hex"]
                  for k in name_keys(c["name"])}
         for t in brands[b].values():
@@ -420,14 +484,16 @@ def main() -> None:
                     if all(parts):
                         c["hex"], c["hexes"] = parts[0], parts
     dedupe_sunlu_skus(brands["Sunlu"])
-    for types in brands.values():
+    for b, types in brands.items():
         pick_primary_skus(types)
+        brands[b] = {t: v for t, v in types.items() if v["colors"]}
     catalog = {
         "sources": [
             "Bambu Lab: Bambu Studio filaments_color_codes.json (https://github.com/bambulab/BambuStudio)",
             "Snapmaker: us.snapmaker.com product listings",
             "Sunlu: store.sunlu.com product listings (Ship to USA, 1 roll; spools and refills)",
             "Polymaker: us.polymaker.com product listings (every spool/refill/weight/diameter SKU)",
+            "Geeetech: 5-digit color codes from geeetech.com product listings",
             "SpoolmanDB (https://github.com/Donkie/SpoolmanDB), MIT License, Copyright (c) Daniel Hultgren",
         ],
         "built": date.today().isoformat(),

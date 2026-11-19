@@ -4,6 +4,7 @@
   "Snapmaker: us.snapmaker.com product listings",
   "Sunlu: store.sunlu.com product listings (Ship to USA, 1 roll; spools and refills)",
   "Polymaker: us.polymaker.com product listings (every spool/refill/weight/diameter SKU)",
+  "Geeetech: 5-digit color codes from geeetech.com product listings",
   "SpoolmanDB (https://github.com/Donkie/SpoolmanDB), MIT License, Copyright (c) Daniel Hultgren"
  ],
  "built": "2026-11-19",
@@ -5020,7 +5021,7 @@
      },
      {
       "name": "Pink (Sakura Pink)",
-      "hex": "#FCA2D3",
+      "hex": "#FDD4DE",
       "skus": [
        {
         "sku": "DLZ-US-SL-PLA-SP-1KG",
@@ -10242,7 +10243,7 @@
     "colors": [
      {
       "name": "Galaxy Black",
-      "hex": "#363538",
+      "hex": "#474648",
       "skus": [
        {
         "sku": "PF01048",
@@ -12289,7 +12290,7 @@
     "colors": [
      {
       "name": "Galaxy Black",
-      "hex": "#363538",
+      "hex": "#474648",
       "skus": [
        {
         "sku": "CA02024",
@@ -12365,7 +12366,7 @@
      },
      {
       "name": "Galaxy Dark Grey",
-      "hex": "#474648",
+      "hex": "#6C6D71",
       "skus": [
        {
         "sku": "CA02028",
@@ -14554,7 +14555,7 @@
      },
      {
       "name": "Metallic Green",
-      "hex": "#55B687",
+      "hex": "#3D441E",
       "skus": [
        {
         "sku": "CA02041",
@@ -14572,7 +14573,7 @@
     "colors": [
      {
       "name": "Neon Magenta",
-      "hex": "#AA538E",
+      "hex": "#F6162E",
       "skus": [
        {
         "sku": "CA02009",
@@ -14585,7 +14586,7 @@
      },
      {
       "name": "Neon Green",
-      "hex": "#55B687",
+      "hex": "#77F0A2",
       "skus": [
        {
         "sku": "CA02006",
@@ -17500,7 +17501,7 @@
     "colors": [
      {
       "name": "Galaxy Black",
-      "hex": "#363538",
+      "hex": "#474648",
       "skus": [
        {
         "sku": "PE01055",
@@ -17513,7 +17514,7 @@
      },
      {
       "name": "Galaxy Dark Grey",
-      "hex": "#474648",
+      "hex": "#6C6D71",
       "skus": [
        {
         "sku": "PE01037",
@@ -17526,7 +17527,7 @@
      },
      {
       "name": "Galaxy Purple",
-      "hex": "#6545A5",
+      "hex": "#786BB0",
       "skus": [
        {
         "sku": "PE01036",
@@ -17552,7 +17553,7 @@
      },
      {
       "name": "Galaxy Orange",
-      "hex": "#F57517",
+      "hex": "#EB6232",
       "skus": [
        {
         "sku": "PE01035",
@@ -17692,7 +17693,7 @@
      },
      {
       "name": "Metallic Green",
-      "hex": "#55B687",
+      "hex": "#3D441E",
       "skus": [
        {
         "sku": "PE01053",
@@ -17832,7 +17833,7 @@
     "colors": [
      {
       "name": "Neon Green",
-      "hex": "#55B687",
+      "hex": "#77F0A2",
       "skus": [
        {
         "sku": "PE01051",
@@ -17871,7 +17872,7 @@
      },
      {
       "name": "Neon Magenta",
-      "hex": "#AA538E",
+      "hex": "#F6162E",
       "skus": [
        {
         "sku": "PE01048",
@@ -19913,6 +19914,865 @@
        }
       ],
       "sku": "PA08005"
+     }
+    ]
+   }
+  },
+  "Geeetech": {
+   "ABS+": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Apple",
+      "hex": "#DAEB2E"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "70343"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71483"
+     },
+     {
+      "name": "Brown",
+      "hex": "#B56B58"
+     },
+     {
+      "name": "Dark Gray",
+      "hex": "#484848"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "71545"
+     },
+     {
+      "name": "Orange",
+      "hex": "#F65D33",
+      "sku": "71547"
+     },
+     {
+      "name": "Pink",
+      "hex": "#EC58B8"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "71548"
+     },
+     {
+      "name": "Red",
+      "hex": "#E31F2B",
+      "sku": "71484"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "71549"
+     },
+     {
+      "name": "Skin",
+      "hex": "#FFC8A9",
+      "sku": "71734"
+     },
+     {
+      "name": "Water Blue",
+      "hex": "#02B4F2",
+      "sku": "71551"
+     },
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "70350"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#FEEA00",
+      "sku": "71546"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71482"
+     },
+     {
+      "name": "Apple Green",
+      "hex": "#B6D649",
+      "sku": "71735"
+     }
+    ]
+   },
+   "ASA": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "72057"
+     },
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "72058"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "72059"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "72060"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "72061"
+     },
+     {
+      "name": "Orange",
+      "hex": "#F65D33",
+      "sku": "72062"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "72063"
+     }
+    ]
+   },
+   "PETG": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Apple",
+      "hex": "#DAEB2E"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "71309"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71316"
+     },
+     {
+      "name": "Brown",
+      "hex": "#B56B58",
+      "sku": "71726"
+     },
+     {
+      "name": "Dark Gray",
+      "hex": "#484848"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "71315"
+     },
+     {
+      "name": "Orange",
+      "hex": "#F65D33",
+      "sku": "71313"
+     },
+     {
+      "name": "Pink",
+      "hex": "#EC58B8",
+      "sku": "71728"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "71727"
+     },
+     {
+      "name": "Red",
+      "hex": "#E31F2B",
+      "sku": "71312"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "71321"
+     },
+     {
+      "name": "Skin",
+      "hex": "#FFC8A9",
+      "sku": "71742"
+     },
+     {
+      "name": "Transparent",
+      "hex": "#EDEDED",
+      "sku": "71311"
+     },
+     {
+      "name": "Water Blue",
+      "hex": "#02B4F2",
+      "sku": "71729"
+     },
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "71310"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#FEEA00",
+      "sku": "71314"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71320"
+     },
+     {
+      "name": "Apple Green",
+      "hex": "#B6D649",
+      "sku": "71730"
+     },
+     {
+      "name": "Olive Green",
+      "hex": "",
+      "sku": "72150"
+     },
+     {
+      "name": "Army Green",
+      "hex": "",
+      "sku": "72207"
+     },
+     {
+      "name": "Transparent Red",
+      "hex": "",
+      "sku": "72145"
+     },
+     {
+      "name": "Transparent Blue",
+      "hex": "",
+      "sku": "72146"
+     },
+     {
+      "name": "Transparent Purple",
+      "hex": "",
+      "sku": "72210"
+     },
+     {
+      "name": "Transparent Grey",
+      "hex": "",
+      "sku": "72211"
+     },
+     {
+      "name": "Transparent Emerald Green",
+      "hex": "",
+      "sku": "72213"
+     },
+     {
+      "name": "Transparent Pink",
+      "hex": "",
+      "sku": "72212"
+     },
+     {
+      "name": "Transparent Orange",
+      "hex": "",
+      "sku": "72209"
+     }
+    ]
+   },
+   "PETG Metal": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Brown",
+      "hex": "#B56B58",
+      "sku": "72036"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "72040"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "72038"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "72037"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "72041"
+     },
+     {
+      "name": "Pink",
+      "hex": "#EC58B8",
+      "sku": "72039"
+     },
+     {
+      "name": "Rose Gold",
+      "hex": "",
+      "sku": "72042"
+     },
+     {
+      "name": "Gold",
+      "hex": "",
+      "sku": "72206"
+     }
+    ]
+   },
+   "PLA": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "New Purple",
+      "hex": "#813F92"
+     },
+     {
+      "name": "Brown",
+      "hex": "#885E3E",
+      "sku": "70432"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0071AE",
+      "sku": "70428"
+     },
+     {
+      "name": "Apple Green",
+      "hex": "#B6D649",
+      "sku": "71232"
+     },
+     {
+      "name": "Water Blue",
+      "hex": "#04AACB",
+      "sku": "71231"
+     },
+     {
+      "name": "Black",
+      "hex": "#3C3C3C",
+      "sku": "70426"
+     },
+     {
+      "name": "Grey",
+      "hex": "#82868A",
+      "sku": "70429"
+     },
+     {
+      "name": "Orange",
+      "hex": "#E99D48",
+      "sku": "70430"
+     },
+     {
+      "name": "White",
+      "hex": "#DEE2E7",
+      "sku": "70433"
+     },
+     {
+      "name": "Red",
+      "hex": "#FA0000",
+      "sku": "70427"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#FEEA00",
+      "sku": "70434"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "70423"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "70431"
+     },
+     {
+      "name": "Pink",
+      "hex": "#EC58B8",
+      "sku": "71210"
+     },
+     {
+      "name": "Transparent",
+      "hex": "#EDEDED",
+      "sku": "71081"
+     },
+     {
+      "name": "Bone White",
+      "hex": "",
+      "sku": "71839"
+     },
+     {
+      "name": "Warm White",
+      "hex": "",
+      "sku": "71838"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "71080"
+     },
+     {
+      "name": "Sand Gold",
+      "hex": "",
+      "sku": "71191"
+     },
+     {
+      "name": "Beige",
+      "hex": "",
+      "sku": "72190"
+     },
+     {
+      "name": "Skin",
+      "hex": "#FFC8A9",
+      "sku": "71725"
+     },
+     {
+      "name": "Multicolor",
+      "hex": "",
+      "sku": "71160"
+     }
+    ]
+   },
+   "PLA Luminous": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Green",
+      "hex": "#00BC00",
+      "sku": "71194"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#F0B200",
+      "sku": "71477"
+     },
+     {
+      "name": "Orange",
+      "hex": "#F39F00",
+      "sku": "71479"
+     },
+     {
+      "name": "White",
+      "hex": "#97A2C2",
+      "sku": "71481"
+     },
+     {
+      "name": "Blue",
+      "hex": "#01ACF7",
+      "sku": "71195"
+     },
+     {
+      "name": "Purple",
+      "hex": "#1429D2",
+      "sku": "71478"
+     },
+     {
+      "name": "Rose red",
+      "hex": "#D857DF",
+      "sku": "71480"
+     },
+     {
+      "name": "Rainbow",
+      "hex": "",
+      "sku": "71365"
+     }
+    ]
+   },
+   "PLA Marble": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71206"
+     },
+     {
+      "name": "Brown",
+      "hex": "#B56B58",
+      "sku": "71535"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71536"
+     }
+    ]
+   },
+   "PLA Matte": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Skin",
+      "hex": "#EBB791",
+      "sku": "71445"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71369"
+     },
+     {
+      "name": "Orange",
+      "hex": "#CB8863",
+      "sku": "71364"
+     },
+     {
+      "name": "Light Gray",
+      "hex": "#A8A5A3"
+     },
+     {
+      "name": "Dark Grey",
+      "hex": "#282A2E",
+      "sku": "71442"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "71360"
+     },
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "71361"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "71363"
+     },
+     {
+      "name": "Navy Blue",
+      "hex": "",
+      "sku": "71446"
+     },
+     {
+      "name": "Olive Green",
+      "hex": "",
+      "sku": "71447"
+     },
+     {
+      "name": "Brown",
+      "hex": "#B56B58",
+      "sku": "71443"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71362"
+     },
+     {
+      "name": "Light Grey",
+      "hex": "",
+      "sku": "71444"
+     },
+     {
+      "name": "Stone Grey",
+      "hex": "",
+      "sku": "71448"
+     },
+     {
+      "name": "Terracotta",
+      "hex": "",
+      "sku": "71449"
+     },
+     {
+      "name": "Peanut Brown",
+      "hex": "",
+      "sku": "72222"
+     },
+     {
+      "name": "Sunny Orange",
+      "hex": "",
+      "sku": "72223"
+     }
+    ]
+   },
+   "PLA Silk": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "71200"
+     },
+     {
+      "name": "Gold",
+      "hex": "",
+      "sku": "71216"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "71204"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "71202"
+     },
+     {
+      "name": "Silky Sky Blue",
+      "hex": "",
+      "sku": "71246"
+     },
+     {
+      "name": "Roval Blue",
+      "hex": "",
+      "sku": "71247"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "71201"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#FEEA00",
+      "sku": "71199"
+     },
+     {
+      "name": "Copper",
+      "hex": "",
+      "sku": "71215"
+     },
+     {
+      "name": "Rainbow",
+      "hex": "",
+      "sku": "71182"
+     },
+     {
+      "name": "Light Rainbow",
+      "hex": "",
+      "sku": "71486"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "71203"
+     },
+     {
+      "name": "Bronze",
+      "hex": "",
+      "sku": "71228"
+     },
+     {
+      "name": "Magenta",
+      "hex": "",
+      "sku": "71217"
+     },
+     {
+      "name": "Sparkly Purple",
+      "hex": "",
+      "sku": "71234"
+     },
+     {
+      "name": "Sparkly Blue",
+      "hex": "",
+      "sku": "71235"
+     },
+     {
+      "name": "Bright Gold",
+      "hex": "",
+      "sku": "72010"
+     },
+     {
+      "name": "Sparkly Silver",
+      "hex": "",
+      "sku": "71236"
+     }
+    ]
+   },
+   "PLA Silk Rainbow": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Gradient",
+      "hex": "",
+      "sku": "71258"
+     }
+    ]
+   },
+   "PLA Wood": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Black Walnut",
+      "hex": "",
+      "sku": "70777"
+     },
+     {
+      "name": "Wood",
+      "hex": "",
+      "sku": "71812"
+     },
+     {
+      "name": "Polar",
+      "hex": "",
+      "sku": "71600"
+     },
+     {
+      "name": "Ebony",
+      "hex": "",
+      "sku": "71602"
+     },
+     {
+      "name": "Rose",
+      "hex": "",
+      "sku": "71601"
+     }
+    ]
+   },
+   "PLA-CF": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Matcha Green",
+      "hex": "",
+      "sku": "71863"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "71542"
+     },
+     {
+      "name": "Brick Red",
+      "hex": "",
+      "sku": "71862"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71860"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71861"
+     }
+    ]
+   },
+   "TPU": {
+    "weight": 1000,
+    "colors": [
+     {
+      "name": "Clear",
+      "hex": "",
+      "sku": "71146"
+     },
+     {
+      "name": "Black",
+      "hex": "#000000",
+      "sku": "71148"
+     },
+     {
+      "name": "White",
+      "hex": "#FCFEFB",
+      "sku": "71149"
+     },
+     {
+      "name": "Blue",
+      "hex": "#0067EA",
+      "sku": "71843"
+     },
+     {
+      "name": "Orange",
+      "hex": "#F65D33",
+      "sku": "71851"
+     },
+     {
+      "name": "Purple",
+      "hex": "#6A24B6",
+      "sku": "71854"
+     },
+     {
+      "name": "Brown",
+      "hex": "#B56B58",
+      "sku": "71855"
+     },
+     {
+      "name": "Green",
+      "hex": "#1C8C04",
+      "sku": "71841"
+     },
+     {
+      "name": "Red",
+      "hex": "#E31F2B",
+      "sku": "71840"
+     },
+     {
+      "name": "Pink",
+      "hex": "#EC58B8",
+      "sku": "71852"
+     },
+     {
+      "name": "Silver",
+      "hex": "#E7ECF0",
+      "sku": "71432"
+     },
+     {
+      "name": "Grey",
+      "hex": "#4A4B52",
+      "sku": "71147"
+     },
+     {
+      "name": "Transparent Blue",
+      "hex": "",
+      "sku": "71430"
+     },
+     {
+      "name": "Transparent Green",
+      "hex": "",
+      "sku": "71431"
+     },
+     {
+      "name": "Transparent Red",
+      "hex": "",
+      "sku": "71428"
+     },
+     {
+      "name": "Transparent Pink",
+      "hex": "",
+      "sku": "71427"
+     },
+     {
+      "name": "Transparent Purple",
+      "hex": "",
+      "sku": "71433"
+     },
+     {
+      "name": "Transparent Yellow",
+      "hex": "",
+      "sku": "71429"
+     },
+     {
+      "name": "Transparent Gold",
+      "hex": "",
+      "sku": "71435"
+     },
+     {
+      "name": "Transparent Orange",
+      "hex": "",
+      "sku": "71426"
+     },
+     {
+      "name": "Transparent Brown",
+      "hex": "",
+      "sku": "71434"
+     },
+     {
+      "name": "Yellow",
+      "hex": "#FEEA00",
+      "sku": "71842"
      }
     ]
    }

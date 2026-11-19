@@ -120,7 +120,7 @@ mcp = MCPServer(
         "inventory_summary to answer stock questions, add_spool when the user buys "
         "filament, unload_spool / return_spool when a spool goes onto or comes off a "
         "printer, and use_filament after a print to deduct grams. catalog_colors lists the "
-        "official colors (with hex codes and SKUs) for Bambu Lab, Snapmaker, Sunlu and Polymaker; use it "
+        "official colors (with hex codes and SKUs) for Bambu Lab, Snapmaker, Sunlu, Polymaker and Geeetech; use it "
         "to fill color_hex, sku and the exact color name when adding those brands. When the "
         "user gives a SKU or color code, look it up with catalog_colors(sku=...)."
     ),
@@ -347,14 +347,15 @@ def inventory_summary(group_by: str = "material_color") -> list[dict[str, Any]]:
 @mcp.tool()
 def catalog_colors(brand: str | None = None, filament_type: str | None = None,
                    color: str | None = None, sku: str | None = None) -> dict[str, Any]:
-    """Look up the manufacturer color catalog (Bambu Lab, Snapmaker, Sunlu, Polymaker) with hex codes.
+    """Look up the manufacturer color catalog (Bambu Lab, Snapmaker, Sunlu, Polymaker, Geeetech).
 
     No arguments: list brands and their filament types.
     brand: list that brand's types with color counts (loose match: "bambulab" = "Bambu Lab").
     brand + filament_type: list that line's colors, e.g. ("Bambu Lab", "PLA Matte").
     color: substring search across colors (optionally limited by brand / filament_type).
     sku: find the color with this SKU / color code (Bambu "10100", Snapmaker "34071",
-         Sunlu "DLZ-US-SL-PLA+V2-BK-1KG", Polymaker "CA04076"; spool and refill SKUs both work,
+         Sunlu "DLZ-US-SL-PLA+V2-BK-1KG", Polymaker "CA04076", Geeetech "70426"; spool and refill
+         SKUs both work,
          and Sunlu region prefixes / "*2" pack suffixes are ignored). The result says the variant
          (e.g. Refill), spool weight and diameter.
     """
@@ -424,12 +425,22 @@ def find_sku(sku: str) -> dict[str, Any] | None:
                         if e.get("variant"):
                             hit["variant"] = e["variant"]
                         _sku_index.setdefault(norm_sku(e["sku"]), hit)
-    return _sku_index.get(norm_sku(sku))
+    hit = _sku_index.get(norm_sku(sku))
+    if hit is None:  # Geeetech box codes wrap the 5-digit color code: DE39-70426-F, 700-001-1364
+        m = re.search(r"(?<!\d)(7\d{4})(?!\d)", sku or "") or re.search(r"700-0\d\d-(\d{4})(?!\d)", sku or "")
+        if m:
+            code = m.group(1) if len(m.group(1)) == 5 else "7" + m.group(1)
+            hit = _sku_index.get(code)
+    return hit
+
+
+BRAND_ALIASES = {"geetech": "geeetech", "bambu": "bambulab", "bbl": "bambulab"}  # common spellings
 
 
 def _norm(s: str) -> str:
-    """'Bambu Lab', 'bambulab', 'BAMBU-LAB' -> 'bambulab'."""
-    return re.sub(r"[^a-z0-9+]", "", s.lower())
+    """'Bambu Lab', 'bambulab', 'BAMBU-LAB' -> 'bambulab'; 'Geetech' -> 'geeetech'."""
+    n = re.sub(r"[^a-z0-9+]", "", s.lower())
+    return BRAND_ALIASES.get(n, n)
 
 
 def _options() -> dict[str, list]:
