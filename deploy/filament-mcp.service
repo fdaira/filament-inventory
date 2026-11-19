@@ -1,0 +1,24 @@
+[Unit]
+Description=Filament Inventory MCP server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=filament-mcp
+Group=filament-mcp
+EnvironmentFile=/etc/filament-mcp.env
+ExecStart=/opt/filament-mcp/.venv/bin/python /opt/filament-mcp/filament_server.py --http
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the service can only write its database directory.
+StateDirectory=filament-mcp
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/filament-mcp
+
+[Install]
+WantedBy=multi-user.target

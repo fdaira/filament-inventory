@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filament Inventory</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23e8743b'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f4f1; --surface: #ffffff; --surface-2: #f0ede8; --border: #e2ddd5;
+  --text: #1f1c18; --muted: #6f685e; --accent: #d9622b; --accent-text: #ffffff;
+  --accent-soft: #fbe9df; --ok: #2f7d4f; --ok-soft: #e3f2e8; --err: #b3261e; --err-soft: #fbe4e2;
+  --shadow: 0 1px 2px rgba(31,28,24,.06), 0 4px 16px rgba(31,28,24,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161412; --surface: #201d1a; --surface-2: #2a2622; --border: #3a352f;
+    --text: #f2eee9; --muted: #a59d92; --accent: #f08a54; --accent-text: #1b120c;
+    --accent-soft: #3b261b; --ok: #6cc592; --ok-soft: #1d3326; --err: #f2867e; --err-soft: #3d1f1d;
+    --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161412; --surface: #201d1a; --surface-2: #2a2622; --border: #3a352f;
+  --text: #f2eee9; --muted: #a59d92; --accent: #f08a54; --accent-text: #1b120c;
+  --accent-soft: #3b261b; --ok: #6cc592; --ok-soft: #1d3326; --err: #f2867e; --err-soft: #3d1f1d;
+  --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 64px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+header h1 { font-size: 1.35rem; margin: 0; letter-spacing: -.01em; }
+header .stock { margin-left: auto; color: var(--muted); font-size: .9rem; text-align: right; }
+.logo { width: 34px; height: 34px; border-radius: 50%; background: var(--accent);
+  display: grid; place-items: center; flex: none; }
+.logo::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); }
+
+header h1, header .stock { white-space: nowrap; }
+@media (max-width: 560px) {
+  header h1 { font-size: 1.15rem; }
+  header .stock { font-size: .8rem; }
+  .seg { flex: 1 1 100%; }
+  .seg button { flex: 1; }
+}
+.tabs { display: flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 12px; margin-bottom: 16px; }
+.tabs button { flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600;
+  padding: 10px 8px; border-radius: 9px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.full { grid-column: 1 / -1; }
+@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+label { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+label .req { color: var(--accent); }
+input, select, textarea {
+  width: 100%; font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-height: 44px;
+}
+textarea { min-height: 64px; resize: vertical; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.color-row { display: flex; gap: 8px; }
+.color-row input[type="color"] { width: 52px; flex: none; padding: 4px; cursor: pointer; }
+.hint { font-size: .8rem; color: var(--muted); margin-top: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: .85rem;
+  padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.stepper { display: flex; align-items: stretch; }
+.stepper button { width: 44px; flex: none; font: inherit; font-size: 1.2rem; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); cursor: pointer; }
+.stepper button:first-child { border-radius: 10px 0 0 10px; }
+.stepper button:last-child { border-radius: 0 10px 10px 0; }
+.stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; }
+
+.btn { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 18px; min-height: 44px; cursor: pointer;
+  background: var(--accent); color: var(--accent-text); }
+.btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.btn.small { padding: 7px 12px; min-height: 36px; font-size: .9rem; }
+.btn:disabled { opacity: .55; cursor: default; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 18px; }
+
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.toolbar input { flex: 1 1 240px; }
+.seg { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .9rem; font-weight: 600;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.list { display: grid; gap: 10px; }
+.spool { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); }
+.spool-main { display: flex; gap: 14px; align-items: center; }
+.swatch { width: 40px; height: 40px; border-radius: 50%; flex: none; position: relative;
+  border: 1px solid var(--border); background: var(--sw, var(--surface-2)); }
+.swatch::after { content: ""; position: absolute; inset: 13px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); }
+.swatch.none { background: repeating-linear-gradient(45deg, var(--surface-2) 0 5px, var(--border) 5px 10px); }
+.spool-info { flex: 1; min-width: 0; }
+.spool-title { font-weight: 650; overflow-wrap: anywhere; }
+.spool-meta { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+.badge { display: inline-block; font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); vertical-align: 1px; margin-right: 4px; }
+.badge.printer { background: var(--accent-soft); color: var(--accent); }
+.qty { text-align: right; flex: none; }
+.qty b { display: block; font-variant-numeric: tabular-nums; }
+.bar { width: 76px; height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 5px; margin-left: auto; }
+.bar span { display: block; height: 100%; background: var(--accent); }
+.spool-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+.inline-form { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.inline-form > div { flex: 1 1 160px; }
+.empty { text-align: center; color: var(--muted); padding: 36px 12px; }
+
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0;
+  max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 12px; font-weight: 600;
+  background: var(--ok-soft); color: var(--ok); border: 1px solid var(--ok); transition: .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { background: var(--err-soft); color: var(--err); border-color: var(--err); }
+.palette { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.palette-head { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--muted); margin-bottom: 10px; }
+.palette-head b { color: var(--text); font-weight: 600; }
+.palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 8px; max-height: 196px; overflow-y: auto; padding: 2px; }
+.pal { aspect-ratio: 1; width: 100%; border-radius: 50%; border: 1px solid var(--border); cursor: pointer; padding: 0;
+  background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+.pal[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pal:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.palette-name { font-size: .85rem; margin-top: 10px; min-height: 1.2em; color: var(--muted); }
+.palette-name b { color: var(--text); }
+.sku-row { display: flex; gap: 8px; }
+.sku-result { font-size: .85rem; margin-top: 6px; min-height: 1.2em; color: var(--muted); }
+.sku-result.ok { color: var(--ok); font-weight: 600; }
+.sku-result.miss { color: var(--muted); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true"></div>
+    <h1>Filament Inventory</h1>
+    <div class="stock" id="stockLine"></div>
+  </header>
+
+  <!-- Access token (asked once, remembered in this browser) -->
+  <section id="tokenView" class="card hidden">
+    <form id="tokenForm">
+      <label for="tokenInput">Access token</label>
+      <input id="tokenInput" type="password" autocomplete="current-password" required>
+      <div class="hint">On the server: <code>sudo grep FILAMENT_TOKEN /etc/filament-mcp.env</code>. It's saved in this browser only.</div>
+      <div class="actions"><button class="btn" type="submit">Unlock</button></div>
+    </form>
+  </section>
+
+  <main id="app" class="hidden">
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tabLoad" aria-selected="true" aria-controls="loadView">Load filament</button>
+      <button role="tab" id="tabFind" aria-selected="false" aria-controls="findView">Find &amp; unload</button>
+    </nav>
+
+    <!-- 1) Load new filament -->
+    <section id="loadView" role="tabpanel">
+      <form id="loadForm" class="card" autocomplete="off">
+        <div class="grid">
+          <div class="full">
+            <label for="sku">SKU / color code</label>
+            <input id="sku" placeholder="e.g. 10100, 34071, CA04076 or DLZ-US-SL-PLA+V2-BK-1KG" autocapitalize="characters" spellcheck="false">
+            <div class="sku-result" id="skuResult" aria-live="polite">Type or scan the code on the spool to fill everything in, or fill the fields yourself.</div>
+          </div>
+          <div>
+            <label for="brand">Brand</label>
+            <input id="brand" list="brandList" placeholder="e.g. Prusament">
+          </div>
+          <div>
+            <label for="material">Type <span class="req">*</span></label>
+            <input id="material" list="materialList" required placeholder="PLA, PETG, ABS…">
+          </div>
+          <div class="full">
+            <label for="color">Color <span class="req">*</span></label>
+            <div class="color-row">
+              <input id="colorHex" type="color" value="#E8743B" aria-label="Color swatch">
+              <input id="color" list="colorList" required placeholder="e.g. Galaxy Black">
+            </div>
+            <div class="hint" id="colorHint">Pick a swatch for easy spotting, then name the color as the brand calls it.</div>
+            <div class="palette hidden" id="palette">
+              <div class="palette-head"><span id="paletteTitle"></span><span>tap a color</span></div>
+              <div class="palette-grid" id="paletteGrid" role="group" aria-label="Catalog colors"></div>
+              <div class="palette-name" id="paletteName"></div>
+            </div>
+          </div>
+          <div>
+            <label for="count">Quantity (spools) <span class="req">*</span></label>
+            <div class="stepper">
+              <button type="button" data-step="-1" aria-label="One fewer spool">−</button>
+              <input id="count" type="number" min="1" max="100" value="1" inputmode="numeric" required>
+              <button type="button" data-step="1" aria-label="One more spool">+</button>
+            </div>
+          </div>
+          <div>
+            <label for="weight">Filament per spool (g)</label>
+            <input id="weight" type="number" min="1" step="1" value="1000" inputmode="numeric">
+            <div class="chips" id="weightChips">
+              <button type="button" class="chip" data-w="250">250</button>
+              <button type="button" class="chip" data-w="500">500</button>
+              <button type="button" class="chip" data-w="750">750</button>
+              <button type="button" class="chip" data-w="1000">1 kg</button>
+              <button type="button" class="chip" data-w="2000">2 kg</button>
+            </div>
+          </div>
+          <div class="full">
+            <label for="location">Location</label>
+            <input id="location" list="locationList" placeholder="e.g. Dry box A, Shelf 2">
+          </div>
+          <div class="full">
+            <label for="notes">Notes</label>
+            <textarea id="notes" placeholder="Optional: print temp, purchase info…"></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn secondary" type="reset">Clear</button>
+          <button class="btn" type="submit" id="loadBtn">Add to inventory</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 2) Search + unload to printer -->
+    <section id="findView" role="tabpanel" class="hidden">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search brand, type, color, SKU, location, printer…" aria-label="Search filament">
+        <div class="seg" role="group" aria-label="Show">
+          <button type="button" data-status="stock" aria-pressed="true">In stock</button>
+          <button type="button" data-status="loaded" aria-pressed="false">On printers</button>
+          <button type="button" data-status="all" aria-pressed="false">All</button>
+        </div>
+      </div>
+      <div id="results" class="list" aria-live="polite"></div>
+    </section>
+  </main>
+</div>
+
+<datalist id="brandList"></datalist>
+<datalist id="materialList"></datalist>
+<datalist id="colorList"></datalist>
+<datalist id="locationList"></datalist>
+<datalist id="printerList"></datalist>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+const COMMON_MATERIALS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PC", "Nylon", "PVA", "HIPS"];
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let token = store.get("filamentToken") || "";
+let options = { brands: [], materials: [], colors: [], locations: [], printers: [] };
+let status = "stock";
+let catalog = { brands: {} };
+const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9+]/g, "");
+function catalogBrand(name) {
+  const n = norm(name);
+  if (!n) return null;
+  const names = Object.keys(catalog.brands);
+  return names.find((b) => norm(b) === n)
+    || (n.length >= 4 ? names.find((b) => norm(b).startsWith(n)) : null) || null;
+}
+function catalogLine(brandName, typeName) {
+  const b = catalogBrand(brandName);
+  if (!b) return null;
+  const n = norm(typeName);
+  const t = Object.keys(catalog.brands[b]).find((k) => norm(k) === n);
+  return t ? { brand: b, type: t, ...catalog.brands[b][t] } : null;
+}
+const normSku = (s) => (s || "").toUpperCase().replace(/\s+/g, "").replace(/^DLZ-[A-Z]{2}-/, "").replace(/\*\d+$/, "");
+let skuIndex = new Map();
+let skuDiameter = 1.75;  // from the last SKU lookup (e.g. 2.85 mm variants)
+function buildSkuIndex() {
+  skuIndex = new Map();
+  for (const [b, types] of Object.entries(catalog.brands))
+    for (const [t, v] of Object.entries(types))
+      for (const c of v.colors)
+        for (const e of c.skus || (c.sku ? [{ sku: c.sku }] : [])) {
+          const k = normSku(e.sku);
+          if (!skuIndex.has(k)) skuIndex.set(k, { brand: b, type: t, weight: e.weight || v.weight,
+            diameter: e.diameter || 1.75, variant: e.variant || "", sku: e.sku, color: c });
+        }
+}
+// The brand spelling already used in the inventory for a catalog brand (e.g. "Bambulab"), else the catalog's.
+function brandSpelling(catalogName) {
+  return options.brands.find((b) => catalogBrand(b) === catalogName) || catalogName;
+}
+const swatchCss = (c) => c.hexes && c.hexes.length > 1 ? `linear-gradient(135deg, ${c.hexes.join(", ")})` : c.hex;
+
+// ---------- API ----------
+class AuthError extends Error {}
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "Authorization": "Bearer " + token, ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+  });
+  if (res.status === 401) throw new AuthError("Unauthorized");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Request failed (" + res.status + ")");
+  return data;
+}
+function handleError(e) {
+  if (e instanceof AuthError) { showTokenView("That token didn't work."); return; }
+  toast(e.message, true);
+}
+
+// ---------- helpers ----------
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v;
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+}
+function fillList(id, values) {
+  $(id).replaceChildren(...values.map((v) => el("option", { value: v })));
+}
+let toastTimer;
+function toast(msg, isErr = false) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.toggle("err", isErr); t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+}
+const grams = (g) => g >= 1000 ? (g / 1000).toFixed(g % 1000 ? 2 : 0).replace(/\.?0+$/, "") + " kg" : Math.round(g) + " g";
+const titleOf = (s) => [s.brand, s.material, s.color].filter(Boolean).join(" · ");
+
+// ---------- token ----------
+function showTokenView(msg) {
+  $("app").classList.add("hidden");
+  $("tokenView").classList.remove("hidden");
+  if (msg) toast(msg, true);
+  $("tokenInput").focus();
+}
+$("tokenForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  token = $("tokenInput").value.trim();
+  try {
+    await loadCatalog();
+    await refreshOptions();
+    store.set("filamentToken", token);
+    $("tokenView").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("tokenInput").value = "";
+  } catch (err) { handleError(err); }
+});
+
+// ---------- tabs ----------
+function selectTab(which) {
+  const load = which === "load";
+  $("tabLoad").setAttribute("aria-selected", load);
+  $("tabFind").setAttribute("aria-selected", !load);
+  $("loadView").classList.toggle("hidden", !load);
+  $("findView").classList.toggle("hidden", load);
+  store.set("filamentTab", which);
+  if (!load) runSearch();
+}
+$("tabLoad").onclick = () => selectTab("load");
+$("tabFind").onclick = () => selectTab("find");
+
+// ---------- options / header ----------
+async function loadCatalog() {
+  try { catalog = await api("/api/catalog", { cache: "no-cache" }); } catch (e) { if (e instanceof AuthError) throw e; }
+  buildSkuIndex();
+}
+async function refreshOptions() {
+  options = await api("/api/options");
+  // Prefer the spelling already in the inventory (e.g. "Bambulab") over the catalog's ("Bambu Lab").
+  const usedNorm = new Set(options.brands.map(norm));
+  fillList("brandList", [...options.brands, ...Object.keys(catalog.brands).filter((b) => !usedNorm.has(norm(b)))]);
+  updateCatalogUI();
+  fillList("locationList", options.locations);
+  fillList("printerList", options.printers);
+  const all = await api("/api/spools?status=all");
+  const inStock = all.filter((s) => !s.printer);
+  $("stockLine").textContent = all.length
+    ? `${inStock.length} in stock · ${grams(inStock.reduce((a, s) => a + s.remaining_g, 0))}`
+    : "";
+}
+
+// ---------- load form ----------
+let hexTouched = false;
+$("colorHex").addEventListener("input", () => { hexTouched = true; });
+let weightTouched = false;
+$("weight").addEventListener("input", () => { weightTouched = true; });
+
+// Brand -> type suggestions; brand + type -> catalog palette.
+let renderedLine = "";
+function updateCatalogUI() {
+  const b = catalogBrand($("brand").value);
+  const types = b ? Object.keys(catalog.brands[b]) : [];
+  fillList("materialList", [...new Set([...types, ...options.materials, ...COMMON_MATERIALS])]);
+
+  const line = catalogLine($("brand").value, $("material").value);
+  const used = options.colors.map((c) => c.color);
+  fillList("colorList", [...new Set([...(line ? line.colors.map((c) => c.name) : []), ...used])]);
+  $("palette").classList.toggle("hidden", !line);
+  $("colorHint").classList.toggle("hidden", !!line);
+  if (!line) { renderedLine = ""; return; }
+  const key = line.brand + "|" + line.type;
+  if (key === renderedLine) return;  // don't rebuild under the pointer (blur fires mid-click)
+  renderedLine = key;
+  if (!weightTouched && line.weight) { $("weight").value = line.weight; syncChips(); }
+  $("paletteTitle").replaceChildren(el("b", {}, `${line.brand} ${line.type}`), ` · ${line.colors.length} colors`);
+  $("paletteGrid").replaceChildren(...line.colors.map((c) =>
+    el("button", { type: "button", class: "pal", style: `--sw:${swatchCss(c)}`, title: c.name, "aria-label": c.name,
+      "aria-pressed": norm(c.name) === norm($("color").value),
+      onclick: () => pickColor(c) })));
+  showPickedName();
+}
+function pickColor(c, fromSku = false) {
+  $("color").value = c.name;
+  if (!fromSku) {
+    skuDiameter = 1.75;
+    $("sku").value = c.sku || "";
+    setSkuResult(c.sku ? `✓ SKU ${c.sku}` : "No SKU listed for this color.", c.sku ? "ok" : "miss");
+  }
+  $("colorHex").value = c.hex; hexTouched = true;
+  document.querySelectorAll("#paletteGrid .pal").forEach((p) => p.setAttribute("aria-pressed", p.title === c.name));
+  showPickedName();
+}
+function showPickedName() {
+  const v = $("color").value.trim();
+  $("paletteName").replaceChildren(...(v ? ["Selected: ", el("b", {}, v)] : ["No color selected"]));
+}
+function setSkuResult(text, cls) {
+  $("skuResult").textContent = text;
+  $("skuResult").className = "sku-result" + (cls ? " " + cls : "");
+}
+$("sku").addEventListener("input", () => {
+  const raw = $("sku").value.trim();
+  skuDiameter = 1.75;
+  if (!raw) return setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
+  const hit = skuIndex.get(normSku(raw));
+  if (!hit) return setSkuResult(raw.length >= 5 ? "Not in the catalog: fill in the details below." : "", "miss");
+  $("brand").value = brandSpelling(hit.brand);
+  $("material").value = hit.type;
+  updateCatalogUI();
+  if (!weightTouched) { $("weight").value = hit.weight; syncChips(); }
+  pickColor(hit.color, true);
+  skuDiameter = hit.diameter;
+  const isRefill = /refill/i.test(hit.variant);
+  if (isRefill && !$("notes").value.trim()) $("notes").value = "Refill";
+  const extra = [hit.variant, grams(hit.weight), hit.diameter !== 1.75 ? hit.diameter + " mm" : ""].filter(Boolean).join(" · ");
+  setSkuResult(`✓ ${hit.brand} ${hit.type} · ${hit.color.name}` + (extra ? ` (${extra})` : ""), "ok");
+});
+
+for (const id of ["brand", "material"]) {
+  $(id).addEventListener("input", updateCatalogUI);
+  $(id).addEventListener("change", updateCatalogUI);
+}
+$("color").addEventListener("input", () => {
+  const v = norm($("color").value);
+  const line = catalogLine($("brand").value, $("material").value);
+  const fromCatalog = line && line.colors.find((c) => norm(c.name) === v);
+  if (fromCatalog) return pickColor(fromCatalog);
+  const known = options.colors.find((c) => norm(c.color) === v);
+  if (known && known.color_hex) { $("colorHex").value = known.color_hex; hexTouched = true; }
+  document.querySelectorAll("#paletteGrid .pal").forEach((p) => p.setAttribute("aria-pressed", "false"));
+  showPickedName();
+});
+document.querySelectorAll(".stepper button").forEach((b) => b.addEventListener("click", () => {
+  const n = Math.min(100, Math.max(1, (parseInt($("count").value, 10) || 1) + Number(b.dataset.step)));
+  $("count").value = n;
+}));
+function syncChips() {
+  document.querySelectorAll("#weightChips .chip").forEach((c) => c.setAttribute("aria-pressed", c.dataset.w === $("weight").value));
+}
+document.querySelectorAll("#weightChips .chip").forEach((c) => c.addEventListener("click", () => { $("weight").value = c.dataset.w; weightTouched = true; syncChips(); }));
+$("weight").addEventListener("input", syncChips);
+$("loadForm").addEventListener("reset", () => setTimeout(() => {
+  hexTouched = false; weightTouched = false; syncChips(); updateCatalogUI();
+  setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
+}));
+
+$("loadForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {
+    brand: $("brand").value, material: $("material").value, color: $("color").value,
+    color_hex: hexTouched ? $("colorHex").value : "",
+    sku: $("sku").value.trim(),
+    diameter_mm: skuDiameter,
+    count: $("count").value, net_weight_g: $("weight").value,
+    location: $("location").value, notes: $("notes").value,
+  };
+  $("loadBtn").disabled = true;
+  try {
+    const added = await api("/api/spools", { method: "POST", body: JSON.stringify(body) });
+    toast(`Added ${added.length} × ${titleOf(added[0])}`);
+    // keep brand/type/location for the next entry; clear the rest
+    for (const id of ["color", "notes", "sku"]) $(id).value = "";
+    document.querySelectorAll("#paletteGrid .pal").forEach((p) => p.setAttribute("aria-pressed", "false"));
+    showPickedName();
+    setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
+    $("count").value = 1; hexTouched = false; skuDiameter = 1.75;
+    updateCatalogUI();
+    $("color").focus();
+    refreshOptions().catch(handleError);
+  } catch (err) { handleError(err); }
+  finally { $("loadBtn").disabled = false; }
+});
+
+// ---------- search / unload ----------
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  status = b.dataset.status;
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  runSearch();
+}));
+let searchTimer;
+$("search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 200); });
+
+let searchSeq = 0;
+async function runSearch() {
+  const seq = ++searchSeq;
+  const q = $("search").value.trim();
+  try {
+    const rows = await api(`/api/spools?status=${status}&q=${encodeURIComponent(q)}`);
+    if (seq !== searchSeq) return;
+    renderResults(rows, q);
+  } catch (err) { handleError(err); }
+}
+
+function renderResults(rows, q) {
+  const box = $("results");
+  if (!rows.length) {
+    const what = { stock: "in stock", loaded: "on printers", all: "" }[status];
+    box.replaceChildren(el("div", { class: "empty" },
+      q ? `No spools ${what} match “${q}”.` : (status === "loaded" ? "No spools are on a printer." : "No spools yet. Add some in Load filament.")));
+    return;
+  }
+  box.replaceChildren(...rows.map(spoolCard));
+}
+
+function spoolCard(s) {
+  const pct = Math.max(0, Math.min(100, s.percent_left ?? 0));
+  const meta = [];
+  if (s.printer) meta.push(el("span", { class: "badge printer" }, "On " + s.printer));
+  else if (s.location) meta.push(el("span", { class: "badge" }, s.location));
+  meta.push(`#${s.id}` + (s.sku ? " · SKU " + s.sku : "") + (s.notes ? " · " + s.notes : ""));
+
+  const actions = el("div", { class: "spool-actions" });
+  const card = el("article", { class: "spool" },
+    el("div", { class: "spool-main" },
+      el("div", { class: "swatch" + (s.color_hex ? "" : " none"), style: s.color_hex ? `--sw:${s.color_hex}` : "", "aria-hidden": "true" }),
+      el("div", { class: "spool-info" },
+        el("div", { class: "spool-title" }, titleOf(s)),
+        el("div", { class: "spool-meta" }, meta)),
+      el("div", { class: "qty" },
+        el("b", {}, grams(s.remaining_g)),
+        el("div", { class: "bar", title: pct + "% left" }, el("span", { style: `width:${pct}%` })))),
+    actions);
+
+  if (!s.printer) {
+    actions.append(el("button", { class: "btn small", type: "button", onclick: () => openUnload(card, s) }, "Unload to printer"));
+  } else {
+    actions.append(el("button", { class: "btn small secondary", type: "button", onclick: () => openReturn(card, s) }, "Return to stock"));
+  }
+  return card;
+}
+
+function closeInline(card) { card.querySelector(".inline-form")?.remove(); }
+
+function openUnload(card, s) {
+  if (card.querySelector(".inline-form")) return closeInline(card);
+  const input = el("input", { list: "printerList", placeholder: "Printer name", required: "", "aria-label": "Printer name" });
+  if (options.printers.length === 1) input.value = options.printers[0];
+  const form = el("form", { class: "inline-form" },
+    el("div", {}, el("label", {}, "Unload onto printer"), input),
+    el("button", { class: "btn secondary small", type: "button", onclick: () => closeInline(card) }, "Cancel"),
+    el("button", { class: "btn small", type: "submit" }, "Unload"));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api(`/api/spools/${s.id}/unload`, { method: "POST", body: JSON.stringify({ printer: input.value }) });
+      toast(`${titleOf(r)} is now on ${r.printer}`);
+      refreshOptions().catch(handleError); runSearch();
+    } catch (err) { handleError(err); }
+  });
+  card.append(form); input.focus();
+}
+
+function openReturn(card, s) {
+  if (card.querySelector(".inline-form")) return closeInline(card);
+  const g = el("input", { type: "number", min: "0", step: "1", inputmode: "numeric", value: Math.round(s.remaining_g), "aria-label": "Grams left" });
+  const loc = el("input", { list: "locationList", value: s.location || "", placeholder: "Location", "aria-label": "Location" });
+  const form = el("form", { class: "inline-form" },
+    el("div", {}, el("label", {}, "Grams left"), g),
+    el("div", {}, el("label", {}, "Put back at"), loc),
+    el("button", { class: "btn secondary small", type: "button", onclick: () => closeInline(card) }, "Cancel"),
+    el("button", { class: "btn small", type: "submit" }, "Return"));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api(`/api/spools/${s.id}/return`, { method: "POST", body: JSON.stringify({ remaining_g: g.value, location: loc.value }) });
+      toast(`${titleOf(r)} is back in stock`);
+      refreshOptions().catch(handleError); runSearch();
+    } catch (err) { handleError(err); }
+  });
+  card.append(form); g.focus(); g.select();
+}
+
+// ---------- start ----------
+(async () => {
+  syncChips();
+  if (!token) return showTokenView();
+  try {
+    await loadCatalog();
+    await refreshOptions();
+    $("app").classList.remove("hidden");
+    selectTab(store.get("filamentTab") === "find" ? "find" : "load");
+  } catch (err) { handleError(err); }
+})();
+</script>
+</body>
+</html>
