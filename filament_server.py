@@ -449,15 +449,64 @@ def _options() -> dict[str, list]:
                 "colors": colors}
 
 
+def _icon_png(size: int) -> bytes:
+    """App icon (a filament spool on the accent color), drawn without image libraries."""
+    import struct
+    import zlib
+
+    bg, ring, hub = (217, 98, 43), (255, 243, 234), (217, 98, 43)
+    c = (size - 1) / 2
+    r_outer, r_hub = size * 0.34, size * 0.12
+
+    def cover(d: float, r: float) -> float:  # anti-aliased disc edge
+        return max(0.0, min(1.0, r - d + 0.5))
+
+    rows = bytearray()
+    for y in range(size):
+        rows.append(0)
+        for x in range(size):
+            d = ((x - c) ** 2 + (y - c) ** 2) ** 0.5
+            a, h = cover(d, r_outer), cover(d, r_hub)
+            px = [bg[i] * (1 - a) + ring[i] * a for i in range(3)]
+            px = [px[i] * (1 - h) + hub[i] * h for i in range(3)]
+            rows += bytes(int(v + 0.5) for v in px)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b""))
+
+
+_icons: dict[int, bytes] = {}
+MANIFEST = {
+    "name": "Filament Inventory", "short_name": "Filament", "start_url": "./", "scope": "./",
+    "display": "standalone", "background_color": "#f6f4f1", "theme_color": "#d9622b",
+    "icons": [{"src": f"icon-{n}.png", "sizes": f"{n}x{n}", "type": "image/png"} for n in (192, 512)],
+}
+# Served without the token: the page shell, its icons and manifest (no inventory data).
+PUBLIC_PATHS = {"/", "/manifest.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"}
+
+
 def build_web_app():
     """Small JSON API + the single-page UI, served next to the MCP endpoint."""
     from starlette.applications import Starlette
     from starlette.requests import Request
-    from starlette.responses import HTMLResponse, JSONResponse
+    from starlette.responses import HTMLResponse, JSONResponse, Response
     from starlette.routing import Route
 
     async def index(_: Request):
         return HTMLResponse(UI_FILE.read_text(encoding="utf-8"))
+
+    async def icon(request: Request):
+        size = 180 if request.url.path == "/apple-touch-icon.png" else int(request.path_params["size"])
+        if size not in (180, 192, 512):
+            return Response(status_code=404)
+        if size not in _icons:
+            _icons[size] = _icon_png(size)
+        return Response(_icons[size], media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+    async def manifest(_: Request):
+        return JSONResponse(MANIFEST, media_type="application/manifest+json")
 
     async def spools(request: Request):
         if request.method == "GET":
@@ -513,6 +562,9 @@ def build_web_app():
 
     return Starlette(routes=[
         Route("/", index),
+        Route("/manifest.webmanifest", manifest),
+        Route("/apple-touch-icon.png", icon),
+        Route("/icon-{size:int}.png", icon),
         Route("/api/spools", spools, methods=["GET", "POST"]),
         Route("/api/options", options),
         Route("/api/catalog", catalog),
@@ -537,7 +589,7 @@ def build_http_app(token: str):
             await mcp_app(scope, receive, send)
             return
         path = scope["path"]
-        if path == "/":
+        if path in PUBLIC_PATHS:
             await web_app(scope, receive, send)
             return
         if token:

@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f4f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161412" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Filament">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Filament Inventory</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23e8743b'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23fff'/%3E%3C/svg%3E">
 <style>
@@ -28,12 +38,16 @@
   --shadow: none; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
+  overflow-wrap: anywhere;
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 64px; }
+.wrap { max-width: 760px; margin: 0 auto;
+  padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           calc(64px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 header h1 { font-size: 1.35rem; margin: 0; letter-spacing: -.01em; }
 header .stock { margin-left: auto; color: var(--muted); font-size: .9rem; text-align: right; }
@@ -41,7 +55,11 @@ header .stock { margin-left: auto; color: var(--muted); font-size: .9rem; text-a
   display: grid; place-items: center; flex: none; }
 .logo::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); }
 
+header { flex-wrap: wrap; row-gap: 4px; }
 header h1, header .stock { white-space: nowrap; }
+@media (max-width: 400px) {
+  header .stock { flex-basis: 100%; margin-left: 46px; text-align: left; }
+}
 @media (max-width: 560px) {
   header h1 { font-size: 1.15rem; }
   header .stock { font-size: .8rem; }
@@ -64,6 +82,17 @@ input, select, textarea {
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-height: 44px;
 }
 textarea { min-height: 64px; resize: vertical; }
+/* iOS Safari: drop native inner shadows / rounded search styling so our styles apply */
+input:not([type="color"]):not([type="checkbox"]), textarea, select { -webkit-appearance: none; appearance: none; }
+input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+input[type="color"] { -webkit-appearance: none; appearance: none; background: var(--surface); }
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+button, .chip, .pal, a { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+button:active, .chip:active { opacity: .7; }
+
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
 .color-row { display: flex; gap: 8px; }
 .color-row input[type="color"] { width: 52px; flex: none; padding: 4px; cursor: pointer; }
@@ -116,8 +145,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .inline-form > div { flex: 1 1 160px; }
 .empty { text-align: center; color: var(--muted); padding: 36px 12px; }
 
-.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0;
-  max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 12px; font-weight: 600;
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); opacity: 0;
+  width: max-content; max-width: calc(100vw - 32px); text-align: center; padding: 12px 16px; border-radius: 12px; font-weight: 600;
   background: var(--ok-soft); color: var(--ok); border: 1px solid var(--ok); transition: .2s; pointer-events: none; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.err { background: var(--err-soft); color: var(--err); border-color: var(--err); }
@@ -136,6 +165,14 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .sku-result.ok { color: var(--ok); font-weight: 600; }
 .sku-result.miss { color: var(--muted); }
 .hidden { display: none !important; }
+/* Touch screens and phones: finger-sized targets (kept last so they override the base rules). */
+@media (pointer: coarse), (max-width: 560px) {
+  .chip { padding: 8px 14px; }
+  .btn.small { min-height: 44px; }
+  .seg button { padding: 11px 12px; }
+  .stepper button { width: 48px; }
+  .palette-grid { grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 10px; max-height: 236px; }
+}
 </style>
 </head>
 <body>
@@ -150,7 +187,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
   <section id="tokenView" class="card hidden">
     <form id="tokenForm">
       <label for="tokenInput">Access token</label>
-      <input id="tokenInput" type="password" autocomplete="current-password" required>
+      <input id="tokenInput" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" required>
       <div class="hint">On the server: <code>sudo grep FILAMENT_TOKEN /etc/filament-mcp.env</code>. It's saved in this browser only.</div>
       <div class="actions"><button class="btn" type="submit">Unlock</button></div>
     </form>
@@ -168,22 +205,22 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
         <div class="grid">
           <div class="full">
             <label for="sku">SKU / color code</label>
-            <input id="sku" placeholder="e.g. 10100, 34071, CA04076 or DLZ-US-SL-PLA+V2-BK-1KG" autocapitalize="characters" spellcheck="false">
+            <input id="sku" placeholder="e.g. 10100, 34071, CA04076 or DLZ-US-SL-PLA+V2-BK-1KG" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next">
             <div class="sku-result" id="skuResult" aria-live="polite">Type or scan the code on the spool to fill everything in, or fill the fields yourself.</div>
           </div>
           <div>
             <label for="brand">Brand</label>
-            <input id="brand" list="brandList" placeholder="e.g. Prusament">
+            <input id="brand" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next" list="brandList" placeholder="e.g. Prusament">
           </div>
           <div>
             <label for="material">Type <span class="req">*</span></label>
-            <input id="material" list="materialList" required placeholder="PLA, PETG, ABS…">
+            <input id="material" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next" list="materialList" required placeholder="PLA, PETG, ABS…">
           </div>
           <div class="full">
             <label for="color">Color <span class="req">*</span></label>
             <div class="color-row">
               <input id="colorHex" type="color" value="#E8743B" aria-label="Color swatch">
-              <input id="color" list="colorList" required placeholder="e.g. Galaxy Black">
+              <input id="color" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next" list="colorList" required placeholder="e.g. Galaxy Black">
             </div>
             <div class="hint" id="colorHint">Pick a swatch for easy spotting, then name the color as the brand calls it.</div>
             <div class="palette hidden" id="palette">
@@ -196,13 +233,13 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
             <label for="count">Quantity (spools) <span class="req">*</span></label>
             <div class="stepper">
               <button type="button" data-step="-1" aria-label="One fewer spool">−</button>
-              <input id="count" type="number" min="1" max="100" value="1" inputmode="numeric" required>
+              <input id="count" type="number" min="1" max="100" value="1" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" required>
               <button type="button" data-step="1" aria-label="One more spool">+</button>
             </div>
           </div>
           <div>
             <label for="weight">Filament per spool (g)</label>
-            <input id="weight" type="number" min="1" step="1" value="1000" inputmode="numeric">
+            <input id="weight" type="number" min="1" step="1" value="1000" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next">
             <div class="chips" id="weightChips">
               <button type="button" class="chip" data-w="250">250</button>
               <button type="button" class="chip" data-w="500">500</button>
@@ -213,7 +250,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
           </div>
           <div class="full">
             <label for="location">Location</label>
-            <input id="location" list="locationList" placeholder="e.g. Dry box A, Shelf 2">
+            <input id="location" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next" list="locationList" placeholder="e.g. Dry box A, Shelf 2">
           </div>
           <div class="full">
             <label for="notes">Notes</label>
@@ -230,7 +267,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
     <!-- 2) Search + unload to printer -->
     <section id="findView" role="tabpanel" class="hidden">
       <div class="toolbar">
-        <input id="search" type="search" placeholder="Search brand, type, color, SKU, location, printer…" aria-label="Search filament">
+        <input id="search" type="search" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Search brand, type, color, SKU, location, printer…" aria-label="Search filament">
         <div class="seg" role="group" aria-label="Show">
           <button type="button" data-status="stock" aria-pressed="true">In stock</button>
           <button type="button" data-status="loaded" aria-pressed="false">On printers</button>
@@ -485,6 +522,21 @@ $("loadForm").addEventListener("reset", () => setTimeout(() => {
   setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
 }));
 
+// Return in a field moves to the next one instead of submitting the form (iPhone "next" key,
+// and barcode-scanner apps that type the code followed by Enter). Submit with the button.
+$("loadForm").addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (e.key !== "Enter" || t.tagName !== "INPUT" || e.isComposing) return;
+  e.preventDefault();
+  if (t.id === "sku") t.dispatchEvent(new Event("input"));
+  const fields = [...$("loadForm").querySelectorAll("input:not([type=color]), textarea")]
+    .filter((f) => !f.closest(".hidden") && f.offsetParent !== null);
+  const next = fields[fields.indexOf(t) + 1];
+  if (t.id === "sku" && $("color").value) $("count").focus();
+  else if (next) next.focus();
+  else t.blur();
+});
+
 $("loadForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const body = {
@@ -520,6 +572,7 @@ document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("clic
 }));
 let searchTimer;
 $("search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 200); });
+$("search").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); $("search").blur(); } });
 
 let searchSeq = 0;
 async function runSearch() {
@@ -572,9 +625,23 @@ function spoolCard(s) {
 
 function closeInline(card) { card.querySelector(".inline-form")?.remove(); }
 
+// Return in an inline form: next field, or submit from the last one. Handled explicitly because
+// Safari/WebKit uses Return to accept a datalist suggestion instead of submitting the form.
+function enterAdvances(form) {
+  form.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.target.tagName !== "INPUT" || e.isComposing) return;
+    e.preventDefault();
+    const inputs = [...form.querySelectorAll("input")];
+    const next = inputs[inputs.indexOf(e.target) + 1];
+    if (next) next.focus();
+    else form.querySelector("button[type=submit]").click();
+  });
+}
+
 function openUnload(card, s) {
   if (card.querySelector(".inline-form")) return closeInline(card);
-  const input = el("input", { list: "printerList", placeholder: "Printer name", required: "", "aria-label": "Printer name" });
+  const input = el("input", { list: "printerList", placeholder: "Printer name", required: "", "aria-label": "Printer name",
+    autocorrect: "off", autocomplete: "off", spellcheck: "false", enterkeyhint: "done" });
   if (options.printers.length === 1) input.value = options.printers[0];
   const form = el("form", { class: "inline-form" },
     el("div", {}, el("label", {}, "Unload onto printer"), input),
@@ -588,13 +655,16 @@ function openUnload(card, s) {
       refreshOptions().catch(handleError); runSearch();
     } catch (err) { handleError(err); }
   });
+  enterAdvances(form);
   card.append(form); input.focus();
 }
 
 function openReturn(card, s) {
   if (card.querySelector(".inline-form")) return closeInline(card);
-  const g = el("input", { type: "number", min: "0", step: "1", inputmode: "numeric", value: Math.round(s.remaining_g), "aria-label": "Grams left" });
-  const loc = el("input", { list: "locationList", value: s.location || "", placeholder: "Location", "aria-label": "Location" });
+  const g = el("input", { type: "number", min: "0", step: "1", inputmode: "numeric", pattern: "[0-9]*",
+    value: Math.round(s.remaining_g), "aria-label": "Grams left", enterkeyhint: "next" });
+  const loc = el("input", { list: "locationList", value: s.location || "", placeholder: "Location", "aria-label": "Location",
+    autocorrect: "off", autocomplete: "off", spellcheck: "false", enterkeyhint: "done" });
   const form = el("form", { class: "inline-form" },
     el("div", {}, el("label", {}, "Grams left"), g),
     el("div", {}, el("label", {}, "Put back at"), loc),
@@ -608,6 +678,7 @@ function openReturn(card, s) {
       refreshOptions().catch(handleError); runSearch();
     } catch (err) { handleError(err); }
   });
+  enterAdvances(form);
   card.append(form); g.focus(); g.select();
 }
 

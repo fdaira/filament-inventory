@@ -9,6 +9,8 @@ plus an **MCP server** so Claude (or any MCP client) can read and update the sam
   named printer and return it to stock with the grams left.
 - **Color catalog** — official color names, hex swatches and SKUs for **Bambu Lab, Snapmaker,
   Sunlu and Polymaker** (about 1,660 colors and over 2,000 SKUs, including refills and 2.85 mm variants).
+- **Phone-friendly** — works in iPhone Safari and Android Chrome; use *Add to Home Screen* to open
+  it full-screen like an app.
 - **Claude integration** — ask "how much black PLA do I have?", "put the blue Polymaker on the
   X1C", or "add a spool of CA04076".
 
