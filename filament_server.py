@@ -12,16 +12,24 @@ Environment:
   FILAMENT_HOST   HTTP bind address         (default 0.0.0.0)
   FILAMENT_PORT   HTTP port                 (default 8765)
   FILAMENT_TOKEN  if set, HTTP clients must send "Authorization: Bearer <token>"
+  FILAMENT_SCALE_URL     optional Wi-Fi scale running ESPHome, e.g. http://192.168.1.50
+  FILAMENT_SCALE_SENSOR  its weight sensor name   (default "Spool Weight")
+  FILAMENT_SCALE_TARE    its tare button name     (default "Tare")
 """
 
 from __future__ import annotations
 
 import hmac
 import json
+import math
 import os
 import re
 import sqlite3
 import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,7 +73,7 @@ CREATE TABLE IF NOT EXISTS usage_log (
 """
 
 UPDATABLE = {"material", "color", "color_hex", "sku", "brand", "diameter_mm", "net_weight_g",
-             "remaining_g", "location", "notes"}
+             "remaining_g", "location", "notes", "empty_spool_g"}
 
 # Columns added after the first release; created on startup if missing.
 MIGRATIONS = {
@@ -73,7 +81,13 @@ MIGRATIONS = {
     # '' = in stock; otherwise the name of the printer the spool was unloaded onto.
     "printer": "ALTER TABLE spools ADD COLUMN printer TEXT NOT NULL DEFAULT ''",
     "sku": "ALTER TABLE spools ADD COLUMN sku TEXT NOT NULL DEFAULT ''",
+    # Weight of the empty spool (g), to turn a scale reading into grams of filament. NULL = unknown.
+    "empty_spool_g": "ALTER TABLE spools ADD COLUMN empty_spool_g REAL",
 }
+
+SCALE_URL = os.environ.get("FILAMENT_SCALE_URL", "").strip().rstrip("/")
+SCALE_SENSOR = os.environ.get("FILAMENT_SCALE_SENSOR", "Spool Weight")
+SCALE_TARE = os.environ.get("FILAMENT_SCALE_TARE", "Tare")
 
 
 def _now() -> str:
@@ -101,7 +115,17 @@ def db():
 def _row(r: sqlite3.Row) -> dict[str, Any]:
     d = dict(r)
     d["percent_left"] = round(100 * d["remaining_g"] / d["net_weight_g"], 1) if d["net_weight_g"] else None
+    if d.get("empty_spool_g") is None:
+        d["empty_spool_suggested"] = default_empty_spool(d["brand"], d["material"], d.get("sku", ""))
     return d
+
+
+def _set_remaining(conn: sqlite3.Connection, r: sqlite3.Row, remaining: float, job: str) -> None:
+    """Store a new grams-left figure; a decrease is logged as usage (so weighing tracks consumption)."""
+    if remaining < r["remaining_g"] - 0.5:
+        conn.execute("INSERT INTO usage_log (spool_id, grams, job, at) VALUES (?,?,?,?)",
+                     (r["id"], round(r["remaining_g"] - remaining, 1), job, _now()))
+    conn.execute("UPDATE spools SET remaining_g = ?, updated_at = ? WHERE id = ?", (remaining, _now(), r["id"]))
 
 
 def _get(conn: sqlite3.Connection, spool_id: int) -> sqlite3.Row:
@@ -122,7 +146,9 @@ mcp = MCPServer(
         "printer, and use_filament after a print to deduct grams. catalog_colors lists the "
         "official colors (with hex codes and SKUs) for Bambu Lab, Snapmaker, Sunlu, Polymaker and Geeetech; use it "
         "to fill color_hex, sku and the exact color name when adding those brands. When the "
-        "user gives a SKU or color code, look it up with catalog_colors(sku=...)."
+        "user gives a SKU or color code, look it up with catalog_colors(sku=...). If a Wi-Fi "
+        "scale is configured, weigh_spool reads it and sets the grams left (scale reading minus "
+        "the empty spool); use it when the user puts a spool on the scale."
     ),
 )
 
@@ -140,6 +166,7 @@ def add_spool(
     count: int = 1,
     color_hex: str = "",
     sku: str = "",
+    empty_spool_g: float | None = None,
 ) -> list[dict[str, Any]]:
     """Add one or more spools of filament to the inventory.
 
@@ -150,6 +177,8 @@ def add_spool(
     net_weight_g: filament weight of a full spool (default 1000 g).
     remaining_g: grams left; defaults to net_weight_g (a new, full spool).
     count: how many identical spools to add (1-100).
+    empty_spool_g: weight of the empty spool, for weighing later; defaults to the catalog's figure
+        for this brand/type (refills have none: pass the weight of the reusable spool).
     """
     material, color = material.strip(), color.strip()
     if not material or not color:
@@ -162,16 +191,20 @@ def add_spool(
     if color_hex and not re.fullmatch(r"#[0-9A-F]{6}", color_hex):
         raise ToolError("color_hex must look like #RRGGBB")
     remaining = net_weight_g if remaining_g is None else remaining_g
+    if empty_spool_g is None:
+        empty_spool_g = default_empty_spool(brand, material, sku)
+    elif empty_spool_g < 0:
+        raise ToolError("empty_spool_g cannot be negative")
     ts = _now()
     with db() as conn:
         ids = []
         for _ in range(count):
             cur = conn.execute(
                 """INSERT INTO spools (material, color, color_hex, sku, brand, diameter_mm, net_weight_g,
-                                       remaining_g, location, notes, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                       remaining_g, location, notes, empty_spool_g, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (material.upper(), color, color_hex, sku.strip().upper(), brand.strip(), diameter_mm,
-                 net_weight_g, remaining, location.strip(), notes.strip(), ts, ts),
+                 net_weight_g, remaining, location.strip(), notes.strip(), empty_spool_g, ts, ts),
             )
             ids.append(cur.lastrowid)
         return [_row(_get(conn, i)) for i in ids]
@@ -237,25 +270,124 @@ def unload_spool(spool_id: int, printer: str) -> dict[str, Any]:
         return _row(_get(conn, spool_id))
 
 
+def _return(conn: sqlite3.Connection, r: sqlite3.Row, remaining_g: float | None,
+            location: str | None) -> None:
+    if remaining_g is not None:
+        _set_remaining(conn, r, remaining_g, f"used on {r['printer']}")
+    ts = _now()
+    conn.execute("UPDATE spools SET printer = '', location = ?, updated_at = ? WHERE id = ?",
+                 (r["location"] if location is None else location.strip(), ts, r["id"]))
+    conn.execute("INSERT INTO spool_events (spool_id, action, printer, at) VALUES (?,?,?,?)",
+                 (r["id"], "return", r["printer"], ts))
+
+
 @mcp.tool()
-def return_spool(spool_id: int, remaining_g: float | None = None,
-                 location: str | None = None) -> dict[str, Any]:
-    """Take a spool off its printer and back into stock, optionally with its weighed grams left
-    and a new storage location."""
+def return_spool(spool_id: int, remaining_g: float | None = None, location: str | None = None,
+                 empty_spool_g: float | None = None) -> dict[str, Any]:
+    """Take a spool off its printer and back into stock, optionally with its weighed grams left,
+    a new storage location and the empty-spool weight. With a Wi-Fi scale, use weigh_spool instead."""
     with db() as conn:
         r = _get(conn, spool_id)
         if not r["printer"]:
             raise ToolError(f"Spool {spool_id} is already in stock")
         if remaining_g is not None and remaining_g < 0:
             raise ToolError("remaining_g cannot be negative")
-        ts = _now()
-        conn.execute(
-            "UPDATE spools SET printer = '', remaining_g = ?, location = ?, updated_at = ? WHERE id = ?",
-            (r["remaining_g"] if remaining_g is None else remaining_g,
-             r["location"] if location is None else location.strip(), ts, spool_id))
-        conn.execute("INSERT INTO spool_events (spool_id, action, printer, at) VALUES (?,?,?,?)",
-                     (spool_id, "return", r["printer"], ts))
+        if empty_spool_g is not None:
+            if empty_spool_g < 0:
+                raise ToolError("empty_spool_g cannot be negative")
+            conn.execute("UPDATE spools SET empty_spool_g = ? WHERE id = ?", (empty_spool_g, spool_id))
+        _return(conn, r, remaining_g, location)
         return _row(_get(conn, spool_id))
+
+
+def set_weight(spool_id: int, remaining_g: float, empty_spool_g: float | None = None) -> dict[str, Any]:
+    """Record a weighed grams-left figure for a spool (in stock or on a printer)."""
+    if remaining_g < 0:
+        raise ToolError("remaining_g cannot be negative")
+    with db() as conn:
+        r = _get(conn, spool_id)
+        if empty_spool_g is not None:
+            if empty_spool_g < 0:
+                raise ToolError("empty_spool_g cannot be negative")
+            conn.execute("UPDATE spools SET empty_spool_g = ? WHERE id = ?", (empty_spool_g, spool_id))
+        _set_remaining(conn, r, remaining_g, "weighed on scale")
+        return _row(_get(conn, spool_id))
+
+
+# ---------------------------------------------------------------- Wi-Fi scale (ESPHome)
+def _scale_call(path: str, method: str = "GET") -> dict[str, Any]:
+    if not SCALE_URL:
+        raise ToolError("No scale is configured (set FILAMENT_SCALE_URL on the server)")
+    url = SCALE_URL + "/" + urllib.parse.quote(path.lstrip("/"))
+    req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None)
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            body = resp.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise ToolError(f"Scale not reachable at {SCALE_URL}: {getattr(e, 'reason', e)}") from e
+    try:
+        return json.loads(body) if body.strip() else {}
+    except ValueError:
+        return {}
+
+
+@mcp.tool()
+def read_scale() -> dict[str, Any]:
+    """Read the Wi-Fi scale: gross weight in grams (spool + filament) and whether it is steady."""
+    values = []
+    for i in range(3):
+        v = _scale_call(f"/sensor/{SCALE_SENSOR}").get("value")
+        if not isinstance(v, (int, float)) or math.isnan(v):
+            raise ToolError("The scale has no reading yet; wait a second and try again")
+        values.append(float(v))
+        if i < 2:
+            time.sleep(0.3)
+    spread = max(values) - min(values)
+    return {"gross_g": round(sorted(values)[1], 1), "stable": spread <= 3.0, "spread_g": round(spread, 1)}
+
+
+@mcp.tool()
+def tare_scale() -> str:
+    """Zero the Wi-Fi scale. The scale (and its spool holder) must be empty."""
+    _scale_call(f"/button/{SCALE_TARE}/press", method="POST")
+    return "Scale zeroed"
+
+
+@mcp.tool()
+def weigh_spool(spool_id: int, empty_spool_g: float | None = None, return_to_stock: bool = False,
+                location: str | None = None) -> dict[str, Any]:
+    """Weigh a spool on the Wi-Fi scale and save its grams left (scale reading minus empty spool).
+
+    empty_spool_g: weight of the empty spool; defaults to the spool's saved value or the catalog's
+        figure for its brand/type. Needed for refills on a reusable spool.
+    return_to_stock: also take it off its printer and back into stock (optionally at `location`).
+    """
+    reading = read_scale()
+    if not reading["stable"]:
+        raise ToolError(f"The scale is still settling (±{reading['spread_g']} g); try again")
+    gross = reading["gross_g"]
+    with db() as conn:
+        r = _get(conn, spool_id)
+        empty = empty_spool_g if empty_spool_g is not None else r["empty_spool_g"]
+        if empty is None:
+            empty = default_empty_spool(r["brand"], r["material"], r["sku"])
+        if empty is None:
+            raise ToolError(f"Empty-spool weight unknown for spool {spool_id}; pass empty_spool_g "
+                            "(e.g. the weight of the reusable spool a refill sits on)")
+        if gross < 20:
+            raise ToolError(f"The scale reads {gross} g; put the spool on it first")
+        if gross < empty - 15:
+            raise ToolError(f"The scale reads {gross} g, less than the empty spool ({empty} g); "
+                            "check the spool is on the scale and the empty-spool weight is right")
+        remaining = max(0.0, round(gross - empty, 1))
+        conn.execute("UPDATE spools SET empty_spool_g = ? WHERE id = ?", (empty, spool_id))
+        if return_to_stock and r["printer"]:
+            _return(conn, r, remaining, location)
+        else:
+            _set_remaining(conn, r, remaining, "weighed on scale")
+            if location is not None:
+                conn.execute("UPDATE spools SET location = ? WHERE id = ?", (location.strip(), spool_id))
+        return {**_row(_get(conn, spool_id)), "scale_gross_g": gross}
 
 
 @mcp.tool()
@@ -300,6 +432,7 @@ def update_spool(
     notes: str | None = None,
     sku: str | None = None,
     color_hex: str | None = None,
+    empty_spool_g: float | None = None,
 ) -> dict[str, Any]:
     """Change fields of a spool (e.g. set remaining_g after weighing it). Omitted fields are unchanged."""
     changes = {k: v for k, v in locals().items() if k in UPDATABLE and v is not None}
@@ -424,6 +557,8 @@ def find_sku(sku: str) -> dict[str, Any] | None:
                                "diameter_mm": e.get("diameter", 1.75)}
                         if e.get("variant"):
                             hit["variant"] = e["variant"]
+                        refill = "refill" in e.get("variant", "").lower()
+                        hit["empty_spool_g"] = None if refill else (e.get("spool_weight") or v.get("spool_weight"))
                         _sku_index.setdefault(norm_sku(e["sku"]), hit)
     hit = _sku_index.get(norm_sku(sku))
     if hit is None:  # Geeetech box codes wrap the 5-digit color code: DE39-70426-F, 700-001-1364
@@ -432,6 +567,33 @@ def find_sku(sku: str) -> dict[str, Any] | None:
             code = m.group(1) if len(m.group(1)) == 5 else "7" + m.group(1)
             hit = _sku_index.get(code)
     return hit
+
+
+def _catalog_brand(brand: str) -> str | None:
+    n = _norm(brand or "")
+    if not n:
+        return None
+    names = list(_catalog()["brands"])
+    return (next((b for b in names if _norm(b) == n), None)
+            or (next((b for b in names if _norm(b).startswith(n)), None) if len(n) >= 4 else None))
+
+
+def default_empty_spool(brand: str, material: str, sku: str = "") -> float | None:
+    """Typical empty-spool weight (g) from the catalog: by SKU (None for refills), else by
+    brand + type, else the brand's usual spool. None when unknown."""
+    if sku:
+        hit = find_sku(sku)
+        if hit:
+            return hit["empty_spool_g"]
+    b = _catalog_brand(brand)
+    if not b:
+        return None
+    types = _catalog()["brands"][b]
+    t = next((v for k, v in types.items() if _norm(k) == _norm(material or "")), None)
+    if t and t.get("spool_weight"):
+        return t["spool_weight"]
+    weights = [v.get("spool_weight") for v in types.values() if v.get("spool_weight")]
+    return max(set(weights), key=weights.count) if weights else None
 
 
 BRAND_ALIASES = {"geetech": "geeetech", "bambu": "bambulab", "bbl": "bambulab"}  # common spellings
@@ -501,6 +663,7 @@ PUBLIC_PATHS = {"/", "/manifest.webmanifest", "/apple-touch-icon.png", "/icon-19
 def build_web_app():
     """Small JSON API + the single-page UI, served next to the MCP endpoint."""
     from starlette.applications import Starlette
+    from starlette.concurrency import run_in_threadpool
     from starlette.requests import Request
     from starlette.responses import HTMLResponse, JSONResponse, Response
     from starlette.routing import Route
@@ -543,6 +706,7 @@ def build_web_app():
                 location=str(body.get("location", "")),
                 notes=str(body.get("notes", "")),
                 count=int(num("count", 1)),
+                empty_spool_g=None if body.get("empty_spool_g") in (None, "") else float(body["empty_spool_g"]),
             )
         except (ToolError, ValueError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
@@ -555,21 +719,38 @@ def build_web_app():
         return JSONResponse(_catalog(), headers={"Cache-Control": "no-cache"})
 
     async def spool_action(request: Request):
-        if request.path_params["action"] not in ("unload", "return"):
+        action = request.path_params["action"]
+        if action not in ("unload", "return", "weigh"):
             return JSONResponse({"error": "unknown action"}, status_code=404)
         try:
             sid = int(request.path_params["spool_id"])
             body = await request.json() if int(request.headers.get("content-length") or 0) else {}
-            if request.path_params["action"] == "unload":
+            opt = lambda k: None if body.get(k) in (None, "") else float(body[k])
+            if action == "unload":
                 result = unload_spool(sid, str(body.get("printer", "")))
-            else:
-                rg = body.get("remaining_g")
+            elif action == "return":
                 loc = body.get("location")
-                result = return_spool(sid, None if rg in (None, "") else float(rg),
-                                      None if loc is None else str(loc))
+                result = return_spool(sid, opt("remaining_g"), None if loc is None else str(loc),
+                                      opt("empty_spool_g"))
+            else:  # weigh: save a grams-left figure the page computed from a scale reading
+                if opt("remaining_g") is None:
+                    raise ToolError("remaining_g is required")
+                result = set_weight(sid, opt("remaining_g"), opt("empty_spool_g"))
         except (ToolError, ValueError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return JSONResponse(result)
+
+    async def scale(request: Request):
+        if not SCALE_URL:
+            return JSONResponse({"configured": False})
+        if request.query_params.get("probe"):
+            return JSONResponse({"configured": True})
+        try:
+            if request.method == "POST":
+                return JSONResponse({"configured": True, "message": await run_in_threadpool(tare_scale)})
+            return JSONResponse({"configured": True, **await run_in_threadpool(read_scale)})
+        except ToolError as e:
+            return JSONResponse({"configured": True, "error": str(e)}, status_code=502)
 
     return Starlette(routes=[
         Route("/", index),
@@ -580,6 +761,8 @@ def build_web_app():
         Route("/api/options", options),
         Route("/api/catalog", catalog),
         Route("/api/spools/{spool_id:int}/{action:str}", spool_action, methods=["POST"]),
+        Route("/api/scale", scale, methods=["GET"]),
+        Route("/api/scale/tare", scale, methods=["POST"]),
     ])
 
 

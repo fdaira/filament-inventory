@@ -120,7 +120,10 @@ def spoolman_types(key: str, data: dict) -> dict[str, dict]:
         label = line if line.startswith("Support for") else f"{material} {line}".strip()
         label = TYPE_ALIASES.get(key, {}).get(label, label)
         weights = [w.get("weight") for w in f.get("weights", []) if w.get("weight")]
+        spool_w = next((w.get("spool_weight") for w in f.get("weights", []) if w.get("spool_weight")), None)
         t = types.setdefault(label, {"weight": int(weights[0]) if weights else 1000, "colors": []})
+        if spool_w and "spool_weight" not in t:
+            t["spool_weight"] = int(round(spool_w))
         for c in colors:
             add_color(t, c["name"].strip(), hex6(c.get("hex")),
                       [h for h in (hex6(x) for x in c.get("hexes") or []) if h])
@@ -158,6 +161,25 @@ def sku_key(s: str) -> str:
     return re.sub(r"\*\d+$", "", re.sub(r"^DLZ-[A-Z]{2}-", "", s))
 
 
+# Typical empty-spool weights (g) from SpoolmanDB, used where a line has no figure of its own.
+BRAND_SPOOL_G = {"Bambu Lab": 250, "Snapmaker": 154, "Sunlu": 189, "Polymaker": 140, "Geeetech": 180}
+POLYMAKER_SPOOL_BY_NET = {500: 100, 600: 125, 750: 125, 800: 125, 1000: 140, 2500: 425, 3000: 425, 5000: 819}
+
+
+def fill_spool_weights(brand: str, types: dict) -> None:
+    """Every type gets 'spool_weight' (empty spool, g) for its usual net weight; Polymaker SKU
+    variants of other sizes get their own. Refills have no spool of their own, so none is set."""
+    for t in types.values():
+        if brand == "Polymaker":
+            t["spool_weight"] = POLYMAKER_SPOOL_BY_NET.get(t["weight"], BRAND_SPOOL_G[brand])
+            for c in t["colors"]:
+                for e in c.get("skus", []):
+                    if "refill" not in e.get("variant", "").lower() and e.get("weight") not in (None, t["weight"]):
+                        e["spool_weight"] = POLYMAKER_SPOOL_BY_NET.get(e["weight"], t["spool_weight"])
+        else:
+            t.setdefault("spool_weight", BRAND_SPOOL_G.get(brand))
+
+
 def pick_primary_skus(types: dict) -> None:
     """With several SKUs, the headline SKU is a regular spool at the line's usual weight in 1.75 mm."""
     for t in types.values():
@@ -183,6 +205,8 @@ def bambu_types(codes: dict, spoolman: dict[str, dict]) -> dict[str, dict]:
         sm = spoolman.get(find_type(spoolman, label))
         weight = sm["weight"] if sm else (500 if label.startswith(("Support", "PVA")) else 1000)
         t = types.setdefault(label, {"weight": weight, "colors": []})
+        if sm and sm.get("spool_weight"):
+            t.setdefault("spool_weight", sm["spool_weight"])
         hexes = [h for h in (hex6(x) for x in e.get("fila_color") or []) if h]
         add_color(t, e["fila_color_name"]["en"].strip(), hexes[0] if hexes else None, hexes,
                   e["fila_color_code"])
@@ -487,6 +511,7 @@ def main() -> None:
     for b, types in brands.items():
         pick_primary_skus(types)
         brands[b] = {t: v for t, v in types.items() if v["colors"]}
+        fill_spool_weights(b, brands[b])
     catalog = {
         "sources": [
             "Bambu Lab: Bambu Studio filaments_color_codes.json (https://github.com/bambulab/BambuStudio)",

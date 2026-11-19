@@ -10,6 +10,8 @@ plus an **MCP server** so Claude (or any MCP client) can read and update the sam
 - **Color catalog** — official color names, hex swatches and SKUs for **Bambu Lab, Snapmaker,
   Sunlu, Polymaker and Geeetech** (about 1,800 colors and over 2,200 SKUs, including refills and
   2.85 mm variants).
+- **Wi-Fi scale (optional)** — put a spool on a DIY ESP32 scale, tap **Weigh**, and the grams left
+  (reading minus the empty spool) are saved; each decrease is logged as usage.
 - **Phone-friendly** — works in iPhone Safari and Android Chrome; use *Add to Home Screen* to open
   it full-screen like an app.
 - **Claude integration** — ask "how much black PLA do I have?", "put the blue Polymaker on the
@@ -35,6 +37,8 @@ stdio instead (for local MCP clients).
 | `FILAMENT_HOST` | `0.0.0.0` | HTTP bind address |
 | `FILAMENT_PORT` | `8765` | HTTP port |
 | `FILAMENT_TOKEN` | *(unset)* | Bearer token required for `/api` and `/mcp` (strongly recommended) |
+| `FILAMENT_SCALE_URL` | *(unset)* | Wi-Fi scale address, e.g. `http://192.168.1.50` (enables Weigh) |
+| `FILAMENT_SCALE_SENSOR` / `FILAMENT_SCALE_TARE` | `Spool Weight` / `Tare` | Names of the scale's sensor and tare button |
 
 ## Deploy to a Linux server (systemd)
 
@@ -74,6 +78,59 @@ claude mcp add --transport http --scope user filament http://myserver:8765/mcp -
 | `update_spool` / `remove_spool` | Edit or delete a spool |
 | `inventory_summary` | Spools and grams per material, color, or brand |
 | `catalog_colors` | Look up catalog colors by brand, type, name or **SKU** |
+| `weigh_spool` | Weigh a spool on the Wi-Fi scale and save grams left (optionally return it to stock) |
+| `read_scale` / `tare_scale` | Read or zero the Wi-Fi scale |
+
+## Wi-Fi scale (optional)
+
+A ~$30 DIY scale lets you weigh a spool when it comes off the printer. The server reads it over
+your network, so it works from any phone (iPhone Safari can't talk to Bluetooth scales).
+
+**Parts:** an ESP32-WROOM-32 dev board, a **5 kg bar load cell with an HX711** amplifier board,
+4 female-to-female jumper wires, a USB power supply, and a printed base and spool cradle (search
+Printables or MakerWorld for "filament scale HX711").
+
+**Wiring**
+
+| Load cell wire | HX711 | | HX711 | ESP32 |
+|---|---|---|---|---|
+| red | E+ | | VCC | 3V3 |
+| black | E− | | GND | GND |
+| white | A− | | DT (DOUT) | GPIO16 |
+| green | A+ | | SCK (CLK) | GPIO17 |
+
+Mount the load cell with one end fixed to the base and the other end holding the spool cradle
+(the arrow on the cell points down), so the bar can flex.
+
+**Flash the ESP32** (once, over USB) with [ESPHome](https://esphome.io):
+
+```bash
+pip install esphome
+cp esphome/secrets.example.yaml esphome/secrets.yaml   # then put your Wi-Fi name and password in it
+esphome run esphome/filament-scale.yaml                 # first build downloads tools; takes a few minutes
+```
+
+The log shows the scale's IP address. Give it a fixed address in your router (DHCP reservation)
+so it doesn't change. Later updates can be sent over Wi-Fi with the same command.
+
+**Calibrate** in a browser at `http://<scale-ip>/`:
+1. With nothing on the scale, press **Tare**.
+2. Put something of known weight on it (a calibration weight, or an item weighed on a kitchen
+   scale), type its grams into **Calibration Weight**, and press **Calibrate**.
+3. Check that **Spool Weight** now shows the right number. The calibration survives restarts.
+
+**Connect it to the server** and restart the service:
+
+```bash
+./deploy/set-scale.sh myserver http://192.168.1.50
+```
+
+The app then shows **⚖ Weigh** on spools in stock, and weighs automatically when you tap
+**Return to stock**. Grams left = scale reading − empty spool. Empty-spool weights come from the
+catalog (Bambu Lab 250 g, Sunlu 189 g, Geeetech 180 g, Snapmaker 154 g, Polymaker 140 g cardboard)
+and can be edited per spool; refills have none, so weigh your reusable spool empty once and
+enter it. To try everything without hardware, run `python3 tools/fake_scale.py` and set
+`FILAMENT_SCALE_URL=http://127.0.0.1:8099`.
 
 ## Color catalog
 

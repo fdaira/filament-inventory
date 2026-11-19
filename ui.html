@@ -143,6 +143,14 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .inline-form { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
   display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 .inline-form > div { flex: 1 1 160px; }
+.inline-form > div.narrow { flex: 1 1 110px; }
+.scale-row { flex: 1 1 100% !important; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.scale-status { flex: 1 1 160px; font-size: .88rem; color: var(--muted); min-height: 1.2em; }
+.scale-status.ok { color: var(--ok); font-weight: 600; }
+.scale-status.warn { color: var(--accent); font-weight: 600; }
+.scale-status.err { color: var(--err); font-weight: 600; }
+.linkish { background: none; border: 0; color: var(--muted); font: inherit; font-size: .85rem; text-decoration: underline;
+  cursor: pointer; padding: 10px 4px; }
 .empty { text-align: center; color: var(--muted); padding: 36px 12px; }
 
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); opacity: 0;
@@ -249,6 +257,11 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
             </div>
           </div>
           <div class="full">
+            <label for="emptySpool">Empty spool (g)</label>
+            <input id="emptySpool" type="number" min="0" step="1" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" placeholder="e.g. 250">
+            <div class="hint" id="emptySpoolHint">Weight of the spool without filament, so a scale can tell how much is left.</div>
+          </div>
+          <div class="full">
             <label for="location">Location</label>
             <input id="location" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="next" list="locationList" placeholder="e.g. Dry box A, Shelf 2">
           </div>
@@ -324,8 +337,10 @@ function buildSkuIndex() {
       for (const c of v.colors)
         for (const e of c.skus || (c.sku ? [{ sku: c.sku }] : [])) {
           const k = normSku(e.sku);
+          const refill = /refill/i.test(e.variant || "");
           if (!skuIndex.has(k)) skuIndex.set(k, { brand: b, type: t, weight: e.weight || v.weight,
-            diameter: e.diameter || 1.75, variant: e.variant || "", sku: e.sku, color: c });
+            diameter: e.diameter || 1.75, variant: e.variant || "", sku: e.sku, color: c,
+            emptySpool: refill ? null : (e.spool_weight || v.spool_weight || null) });
         }
 }
 // The brand spelling already used in the inventory for a catalog brand (e.g. "Bambulab"), else the catalog's.
@@ -387,6 +402,7 @@ $("tokenForm").addEventListener("submit", async (e) => {
   token = $("tokenInput").value.trim();
   try {
     await loadCatalog();
+    await probeScale();
     await refreshOptions();
     store.set("filamentToken", token);
     $("tokenView").classList.add("hidden");
@@ -432,6 +448,15 @@ async function refreshOptions() {
 let hexTouched = false;
 $("colorHex").addEventListener("input", () => { hexTouched = true; });
 let weightTouched = false;
+let emptyTouched = false;
+const EMPTY_HINT = "Weight of the spool without filament, so a scale can tell how much is left.";
+function setEmptySpool(g, refill = false) {
+  $("emptySpool").value = g ? Math.round(g) : "";
+  $("emptySpoolHint").textContent = refill
+    ? "Refill: enter the weight of the reusable spool you put it on (weigh it empty once)."
+    : EMPTY_HINT;
+}
+$("emptySpool").addEventListener("input", () => { emptyTouched = true; });
 $("weight").addEventListener("input", () => { weightTouched = true; });
 
 // Brand -> type suggestions; brand + type -> catalog palette.
@@ -451,6 +476,7 @@ function updateCatalogUI() {
   if (key === renderedLine) return;  // don't rebuild under the pointer (blur fires mid-click)
   renderedLine = key;
   if (!weightTouched && line.weight) { $("weight").value = line.weight; syncChips(); }
+  if (!emptyTouched && line.spool_weight) setEmptySpool(line.spool_weight);
   $("paletteTitle").replaceChildren(el("b", {}, `${line.brand} ${line.type}`), ` · ${line.colors.length} colors`);
   $("paletteGrid").replaceChildren(...line.colors.map((c) =>
     el("button", { type: "button", class: "pal", style: `--sw:${swatchCss(c)}`, title: c.name, "aria-label": c.name,
@@ -494,6 +520,7 @@ $("sku").addEventListener("input", () => {
   pickColor(hit.color, true);
   skuDiameter = hit.diameter;
   const isRefill = /refill/i.test(hit.variant);
+  if (!emptyTouched) setEmptySpool(hit.emptySpool, isRefill);
   if (isRefill && !$("notes").value.trim()) $("notes").value = "Refill";
   const extra = [hit.variant, grams(hit.weight), hit.diameter !== 1.75 ? hit.diameter + " mm" : ""].filter(Boolean).join(" · ");
   setSkuResult(`✓ ${hit.brand} ${hit.type} · ${hit.color.name}` + (extra ? ` (${extra})` : ""), "ok");
@@ -523,7 +550,8 @@ function syncChips() {
 document.querySelectorAll("#weightChips .chip").forEach((c) => c.addEventListener("click", () => { $("weight").value = c.dataset.w; weightTouched = true; syncChips(); }));
 $("weight").addEventListener("input", syncChips);
 $("loadForm").addEventListener("reset", () => setTimeout(() => {
-  hexTouched = false; weightTouched = false; syncChips(); updateCatalogUI();
+  hexTouched = false; weightTouched = false; emptyTouched = false; setEmptySpool(null);
+  syncChips(); updateCatalogUI();
   setSkuResult("Type or scan the code on the spool to fill everything in, or fill the fields yourself.");
 }));
 
@@ -548,6 +576,7 @@ $("loadForm").addEventListener("submit", async (e) => {
     brand: $("brand").value, material: $("material").value, color: $("color").value,
     color_hex: hexTouched ? $("colorHex").value : "",
     sku: $("sku").value.trim(),
+    empty_spool_g: $("emptySpool").value,
     diameter_mm: skuDiameter,
     count: $("count").value, net_weight_g: $("weight").value,
     location: $("location").value, notes: $("notes").value,
@@ -621,6 +650,7 @@ function spoolCard(s) {
     actions);
 
   if (!s.printer) {
+    if (scaleConfigured) actions.append(el("button", { class: "btn small secondary", type: "button", onclick: () => openWeigh(card, s) }, "⚖ Weigh"));
     actions.append(el("button", { class: "btn small", type: "button", onclick: () => openUnload(card, s) }, "Unload to printer"));
   } else {
     actions.append(el("button", { class: "btn small secondary", type: "button", onclick: () => openReturn(card, s) }, "Return to stock"));
@@ -664,27 +694,107 @@ function openUnload(card, s) {
   card.append(form); input.focus();
 }
 
-function openReturn(card, s) {
-  if (card.querySelector(".inline-form")) return closeInline(card);
+// ---------- scale ----------
+let scaleConfigured = false;
+async function probeScale() {
+  try { scaleConfigured = !!(await api("/api/scale?probe=1")).configured; }
+  catch (e) { if (e instanceof AuthError) throw e; scaleConfigured = false; }
+}
+
+// Scale controls for an inline form: a reading minus the empty spool fills `gramsInput`.
+function scaleControls(gramsInput, emptyInput) {
+  const status = el("div", { class: "scale-status", "aria-live": "polite" });
+  const say = (text, cls = "") => { status.textContent = text; status.className = "scale-status" + (cls ? " " + cls : ""); };
+  let gross = null;
+  const recompute = () => {
+    if (gross == null) return;
+    const e = parseFloat(emptyInput.value);
+    if (isNaN(e)) { say(`Scale: ${Math.round(gross)} g. Enter the empty-spool weight to get grams left.`, "warn"); emptyInput.focus(); return; }
+    const left = Math.max(0, Math.round(gross - e));
+    gramsInput.value = left;
+    say(`Scale ${Math.round(gross)} g − ${Math.round(e)} g spool = ${left} g left`, "ok");
+  };
+  emptyInput.addEventListener("input", recompute);
+  const weigh = async () => {
+    btn.disabled = true; say("Reading the scale…");
+    try {
+      const r = await api("/api/scale");
+      if (!r.stable) return say(`Still settling (±${r.spread_g} g). Let it rest, then tap Weigh again.`, "warn");
+      if (r.gross_g < 20) return say(`The scale reads ${Math.round(r.gross_g)} g. Put the spool on it, then tap Weigh.`, "warn");
+      gross = r.gross_g; recompute();
+    } catch (err) {
+      if (err instanceof AuthError) return handleError(err);
+      say(err.message, "err");
+    } finally { btn.disabled = false; }
+  };
+  const btn = el("button", { class: "btn small", type: "button", onclick: weigh }, "⚖ Weigh");
+  const tare = el("button", { class: "linkish", type: "button", onclick: async () => {
+    if (!confirm("Zero the scale? Take everything off it first.")) return;
+    try { await api("/api/scale/tare", { method: "POST" }); gross = null; say("Scale zeroed.", "ok"); }
+    catch (err) { if (err instanceof AuthError) return handleError(err); say(err.message, "err"); }
+  } }, "Zero scale");
+  return { row: el("div", { class: "scale-row" }, btn, status, tare), weigh };
+}
+
+function weightInputs(s) {
   const g = el("input", { type: "number", min: "0", step: "1", inputmode: "numeric", pattern: "[0-9]*",
     value: Math.round(s.remaining_g), "aria-label": "Grams left", enterkeyhint: "next" });
+  const known = s.empty_spool_g ?? s.empty_spool_suggested;
+  const empty = el("input", { type: "number", min: "0", step: "1", inputmode: "numeric", pattern: "[0-9]*",
+    value: known == null ? "" : Math.round(known), placeholder: "e.g. 250", "aria-label": "Empty spool weight", enterkeyhint: "next" });
+  return { g, empty };
+}
+const numOrNull = (v) => (v === "" || v == null ? null : v);
+
+function openReturn(card, s) {
+  if (card.querySelector(".inline-form")) return closeInline(card);
+  const { g, empty } = weightInputs(s);
   const loc = el("input", { list: "locationList", value: s.location || "", placeholder: "Location", "aria-label": "Location",
     autocorrect: "off", autocomplete: "off", spellcheck: "false", enterkeyhint: "done" });
+  const sc = scaleConfigured ? scaleControls(g, empty) : null;
   const form = el("form", { class: "inline-form" },
-    el("div", {}, el("label", {}, "Grams left"), g),
+    sc && sc.row,
+    el("div", { class: "narrow" }, el("label", {}, "Grams left"), g),
+    el("div", { class: "narrow" }, el("label", {}, "Empty spool (g)"), empty),
     el("div", {}, el("label", {}, "Put back at"), loc),
     el("button", { class: "btn secondary small", type: "button", onclick: () => closeInline(card) }, "Cancel"),
     el("button", { class: "btn small", type: "submit" }, "Return"));
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
-      const r = await api(`/api/spools/${s.id}/return`, { method: "POST", body: JSON.stringify({ remaining_g: g.value, location: loc.value }) });
-      toast(`${titleOf(r)} is back in stock`);
+      const r = await api(`/api/spools/${s.id}/return`, { method: "POST", body: JSON.stringify({
+        remaining_g: g.value, location: loc.value, empty_spool_g: numOrNull(empty.value) }) });
+      toast(`${titleOf(r)} is back in stock with ${grams(r.remaining_g)}`);
       refreshOptions().catch(handleError); runSearch();
     } catch (err) { handleError(err); }
   });
   enterAdvances(form);
-  card.append(form); g.focus(); g.select();
+  card.append(form);
+  if (sc) sc.weigh(); else { g.focus(); g.select(); }
+}
+
+function openWeigh(card, s) {
+  if (card.querySelector(".inline-form")) return closeInline(card);
+  const { g, empty } = weightInputs(s);
+  const sc = scaleControls(g, empty);
+  const form = el("form", { class: "inline-form" },
+    sc.row,
+    el("div", { class: "narrow" }, el("label", {}, "Grams left"), g),
+    el("div", { class: "narrow" }, el("label", {}, "Empty spool (g)"), empty),
+    el("button", { class: "btn secondary small", type: "button", onclick: () => closeInline(card) }, "Cancel"),
+    el("button", { class: "btn small", type: "submit" }, "Save"));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api(`/api/spools/${s.id}/weigh`, { method: "POST", body: JSON.stringify({
+        remaining_g: g.value, empty_spool_g: numOrNull(empty.value) }) });
+      toast(`${titleOf(r)}: ${grams(r.remaining_g)} left`);
+      refreshOptions().catch(handleError); runSearch();
+    } catch (err) { handleError(err); }
+  });
+  enterAdvances(form);
+  card.append(form);
+  sc.weigh();
 }
 
 // ---------- start ----------
@@ -693,6 +803,7 @@ function openReturn(card, s) {
   if (!token) return showTokenView();
   try {
     await loadCatalog();
+    await probeScale();
     await refreshOptions();
     $("app").classList.remove("hidden");
     selectTab(store.get("filamentTab") === "find" ? "find" : "load");
