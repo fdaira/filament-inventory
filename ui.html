@@ -139,7 +139,14 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 .qty b { display: block; font-variant-numeric: tabular-nums; }
 .bar { width: 76px; height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 5px; margin-left: auto; }
 .bar span { display: block; height: 100%; background: var(--accent); }
-.spool-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+.spool-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.tag-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding: 12px 14px;
+  border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text); }
+.tag-banner .msg { flex: 1 1 200px; font-weight: 600; }
+.tag-banner code { font-size: .9em; }
+.badge.tag { background: var(--surface-2); color: var(--muted); border: 0; font: inherit; font-size: .75rem; font-weight: 700;
+  cursor: pointer; }
+.spool.link-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .inline-form { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
   display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
 .inline-form > div { flex: 1 1 160px; }
@@ -202,6 +209,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
   </section>
 
   <main id="app" class="hidden">
+    <div id="tagBanner" class="tag-banner hidden" role="status" aria-live="polite"></div>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tabLoad" aria-selected="true" aria-controls="loadView">Load filament</button>
       <button role="tab" id="tabFind" aria-selected="false" aria-controls="findView">Find &amp; unload</button>
@@ -408,6 +416,7 @@ $("tokenForm").addEventListener("submit", async (e) => {
     $("tokenView").classList.add("hidden");
     $("app").classList.remove("hidden");
     $("tokenInput").value = "";
+    startScaleEvents();
   } catch (err) { handleError(err); }
 });
 
@@ -635,6 +644,8 @@ function spoolCard(s) {
   const meta = [];
   if (s.printer) meta.push(el("span", { class: "badge printer" }, "On " + s.printer));
   else if (s.location) meta.push(el("span", { class: "badge" }, s.location));
+  if (s.tags && s.tags.length) meta.push(el("button", { class: "badge tag", type: "button", title: s.tags.join(", "),
+    onclick: () => unlinkTags(s) }, "🏷 " + (s.tags.length === 1 ? "tag" : s.tags.length + " tags")), " ");
   meta.push(`#${s.id}` + (s.sku ? " · SKU " + s.sku : "") + (s.notes ? " · " + s.notes : ""));
 
   const actions = el("div", { class: "spool-actions" });
@@ -649,6 +660,12 @@ function spoolCard(s) {
         el("div", { class: "bar", title: pct + "% left" }, el("span", { style: `width:${pct}%` })))),
     actions);
 
+  if (pendingTag) {
+    card.classList.add("link-target");
+    actions.append(el("button", { class: "btn small", type: "button", onclick: () => linkTag(s, pendingTag) }, "🏷 Link this tag"));
+    return card;
+  }
+  if (scaleConfigured) actions.append(el("button", { class: "btn small secondary", type: "button", onclick: () => linkTag(s, null) }, "🏷 Link tag"));
   if (!s.printer) {
     if (scaleConfigured) actions.append(el("button", { class: "btn small secondary", type: "button", onclick: () => openWeigh(card, s) }, "⚖ Weigh"));
     actions.append(el("button", { class: "btn small", type: "button", onclick: () => openUnload(card, s) }, "Unload to printer"));
@@ -797,6 +814,75 @@ function openWeigh(card, s) {
   sc.weigh();
 }
 
+// ---------- NFC tags and automatic weighing ----------
+let pendingTag = null;   // unknown tag waiting to be linked to a spool
+let eventSeq = null;
+
+function showBanner(...parts) {
+  const b = $("tagBanner");
+  b.replaceChildren(...parts);
+  b.classList.toggle("hidden", !parts.length);
+}
+function offerLink(uid) {
+  showBanner(el("span", { class: "msg" }, "🏷 Unknown tag ", el("code", {}, uid), " on the scale."),
+    el("button", { class: "btn small", type: "button", onclick: () => startLinking(uid) }, "Link to a spool"),
+    el("button", { class: "btn small secondary", type: "button", onclick: () => showBanner() }, "Dismiss"));
+}
+function startLinking(uid) {
+  pendingTag = uid;
+  showBanner(el("span", { class: "msg" }, "Tap “Link this tag” on the spool for ", el("code", {}, uid), "."),
+    el("button", { class: "btn small secondary", type: "button", onclick: stopLinking }, "Cancel"));
+  selectTab("find");
+  status = "all";
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.status === "all"));
+  runSearch();
+}
+function stopLinking() { pendingTag = null; showBanner(); runSearch(); }
+
+async function linkTag(s, uid) {
+  try {
+    const r = await api(`/api/spools/${s.id}/link`, { method: "POST", body: JSON.stringify(uid ? { tag_uid: uid } : {}) });
+    toast(`Tag ${r.linked_tag} linked to ${titleOf(r)}` + (r.moved_from_spool ? ` (moved from spool #${r.moved_from_spool})` : ""));
+    if (uid) { pendingTag = null; showBanner(); }
+    runSearch();
+  } catch (err) {
+    if (err instanceof AuthError) return handleError(err);
+    toast(/No tag on the reader/.test(err.message)
+      ? "No tag on the reader: put the spool on the scale, tag side down, then tap Link tag." : err.message, true);
+  }
+}
+
+async function unlinkTags(s) {
+  if (!confirm(`Remove the NFC tag link${s.tags.length > 1 ? "s" : ""} (${s.tags.join(", ")}) from this spool?`)) return;
+  try { await api(`/api/spools/${s.id}/unlink`, { method: "POST" }); toast("Tag link removed"); runSearch(); }
+  catch (err) { handleError(err); }
+}
+
+// Automatic weighings by the scale (tagged spools put on it), shown as they happen.
+async function pollScaleEvents() {
+  if (document.visibilityState !== "visible") return;
+  try {
+    const r = await api("/api/scale/events" + (eventSeq == null ? "" : `?since=${eventSeq}`));
+    const fresh = eventSeq == null ? [] : r.events;
+    eventSeq = r.seq;
+    let changed = false;
+    for (const ev of fresh) {
+      if (ev.kind === "unknown_tag") { if (!pendingTag) offerLink(ev.uid); continue; }
+      toast(ev.message, ev.kind === "error");
+      changed = changed || ev.kind !== "error";
+    }
+    if (changed) { refreshOptions().catch(() => {}); if (!$("findView").classList.contains("hidden")) runSearch(); }
+  } catch (err) { if (err instanceof AuthError) handleError(err); }
+}
+let scaleEventsStarted = false;
+function startScaleEvents() {
+  if (!scaleConfigured || scaleEventsStarted) return;
+  scaleEventsStarted = true;
+  pollScaleEvents();
+  setInterval(pollScaleEvents, 2500);
+  document.addEventListener("visibilitychange", pollScaleEvents);
+}
+
 // ---------- start ----------
 (async () => {
   syncChips();
@@ -807,6 +893,7 @@ function openWeigh(card, s) {
     await refreshOptions();
     $("app").classList.remove("hidden");
     selectTab(store.get("filamentTab") === "find" ? "find" : "load");
+    startScaleEvents();
   } catch (err) { handleError(err); }
 })();
 </script>

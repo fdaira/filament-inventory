@@ -2,10 +2,12 @@
 
 It answers like ESPHome's web server does for the scale config in esphome/:
     GET  /sensor/Spool Weight     -> {"id": "sensor-spool_weight", "value": 1234.5, "state": "1234.5 g"}
+    GET  /text_sensor/Spool Tag   -> {"id": "text_sensor-spool_tag", "value": "04-A1-B2-C3", "state": "04-A1-B2-C3"}
     POST /button/Tare/press       -> zero the scale
 and adds a control:
     GET  /set?g=1234              -> put 1234 g on the scale
     GET  /set?g=1234&settle=3     -> ...with a wobbly reading for 3 seconds
+    GET  /set?g=1234&tag=04-A1-B2-C3  -> ...a spool whose NFC tag is 04-A1-B2-C3 (tag= removes it)
     GET  /                        -> small page with the current reading
 
     python3 tools/fake_scale.py [port]       (default 8099)
@@ -19,7 +21,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-state = {"gross": 0.0, "offset": 0.0, "settle_until": 0.0}
+state = {"gross": 0.0, "offset": 0.0, "settle_until": 0.0, "tag": ""}
 
 
 def reading() -> float:
@@ -42,13 +44,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/sensor/Spool Weight":
             v = reading()
             self._send(200, {"id": "sensor-spool_weight", "value": v, "state": f"{v:.1f} g"})
+        elif path == "/text_sensor/Spool Tag":
+            self._send(200, {"id": "text_sensor-spool_tag", "value": state["tag"], "state": state["tag"]})
         elif path == "/set":
-            q = parse_qs(u.query)
-            state["gross"] = float(q.get("g", ["0"])[0])
+            q = parse_qs(u.query, keep_blank_values=True)
+            if "g" in q:
+                state["gross"] = float(q["g"][0])
             state["settle_until"] = time.time() + float(q.get("settle", ["0"])[0])
-            self._send(200, {"gross_g": state["gross"]})
+            if "tag" in q:
+                state["tag"] = q["tag"][0].strip().upper()
+            self._send(200, {"gross_g": state["gross"], "tag": state["tag"]})
         elif path == "/":
-            self._send(200, f"<h1>Fake scale</h1><p>Reading: {reading()} g</p>")
+            self._send(200, f"<h1>Fake scale</h1><p>Reading: {reading()} g · tag: {state['tag'] or 'none'}</p>")
         else:
             self._send(404, {"error": "not found"})
 

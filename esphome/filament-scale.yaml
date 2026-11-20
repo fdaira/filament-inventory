@@ -1,7 +1,8 @@
-# Wi-Fi filament scale: ESP32 + HX711 + 5 kg bar load cell, running ESPHome.
+# Wi-Fi filament scale: ESP32 + HX711 + 5 kg bar load cell (+ optional PN532 NFC reader), running ESPHome.
 # Wiring, flashing and calibration steps: see "Wi-Fi scale" in the README.
 #
 # The inventory server reads   GET  http://<scale>/sensor/Spool Weight
+#                              GET  http://<scale>/text_sensor/Spool Tag   (tag ID, "" when none)
 # and zeroes it with           POST http://<scale>/button/Tare/press
 
 substitutions:
@@ -9,6 +10,8 @@ substitutions:
   friendly_name: Filament Scale
   hx711_dout: GPIO16   # HX711 DT / DOUT
   hx711_sck: GPIO17    # HX711 SCK / CLK
+  i2c_sda: GPIO21      # PN532 SDA (set the PN532's switches to I2C)
+  i2c_scl: GPIO22      # PN532 SCL
 
 esphome:
   name: ${name}
@@ -45,6 +48,30 @@ globals:
     type: float
     restore_value: true
     initial_value: "400"
+
+i2c:
+  sda: ${i2c_sda}
+  scl: ${i2c_scl}
+  scan: true
+
+pn532_i2c:             # NFC/RFID reader: publishes the ID of the tag lying on it
+  update_interval: 500ms
+  on_tag:
+    then:
+      - text_sensor.template.publish:
+          id: spool_tag
+          state: !lambda "return x;"
+  on_tag_removed:
+    then:
+      - text_sensor.template.publish:
+          id: spool_tag
+          state: ""
+
+text_sensor:
+  - platform: template
+    id: spool_tag
+    name: "Spool Tag"
+    icon: mdi:nfc-variant
 
 sensor:
   - platform: hx711

@@ -15,6 +15,8 @@ Environment:
   FILAMENT_SCALE_URL     optional Wi-Fi scale running ESPHome, e.g. http://192.168.1.50
   FILAMENT_SCALE_SENSOR  its weight sensor name   (default "Spool Weight")
   FILAMENT_SCALE_TARE    its tare button name     (default "Tare")
+  FILAMENT_SCALE_TAG     its NFC tag text sensor  (default "Spool Tag")
+  FILAMENT_SCALE_AUTO    "0" turns off automatic weighing of tagged spools (default on)
 """
 
 from __future__ import annotations
@@ -26,7 +28,9 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import time
+from collections import deque
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -63,6 +67,11 @@ CREATE TABLE IF NOT EXISTS spool_events (
     printer   TEXT    NOT NULL DEFAULT '',
     at        TEXT    NOT NULL
 );
+CREATE TABLE IF NOT EXISTS spool_tags (
+    uid       TEXT    PRIMARY KEY,                  -- NFC/RFID tag ID, e.g. 04-A1-B2-C3
+    spool_id  INTEGER NOT NULL REFERENCES spools(id) ON DELETE CASCADE,
+    linked_at TEXT    NOT NULL
+);
 CREATE TABLE IF NOT EXISTS usage_log (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     spool_id  INTEGER NOT NULL REFERENCES spools(id) ON DELETE CASCADE,
@@ -88,6 +97,16 @@ MIGRATIONS = {
 SCALE_URL = os.environ.get("FILAMENT_SCALE_URL", "").strip().rstrip("/")
 SCALE_SENSOR = os.environ.get("FILAMENT_SCALE_SENSOR", "Spool Weight")
 SCALE_TARE = os.environ.get("FILAMENT_SCALE_TARE", "Tare")
+SCALE_TAG = os.environ.get("FILAMENT_SCALE_TAG", "Spool Tag")
+SCALE_AUTO = os.environ.get("FILAMENT_SCALE_AUTO", "1") not in ("0", "false", "no", "off")
+
+
+def norm_tag(uid: str) -> str:
+    """'04 a1:b2-c3' -> '04-A1-B2-C3' (the format ESPHome's PN532 reports)."""
+    parts = [p for p in re.split(r"[^0-9A-Fa-f]+", uid or "") if p]
+    if len(parts) == 1 and len(parts[0]) > 2 and len(parts[0]) % 2 == 0:  # '04A1B2C3'
+        parts = [parts[0][i:i + 2] for i in range(0, len(parts[0]), 2)]
+    return "-".join(p.upper().zfill(2) for p in parts)
 
 
 def _now() -> str:
@@ -120,6 +139,15 @@ def _row(r: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
+def _with_tags(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    tags: dict[int, list[str]] = {}
+    for t in conn.execute("SELECT uid, spool_id FROM spool_tags ORDER BY linked_at"):
+        tags.setdefault(t["spool_id"], []).append(t["uid"])
+    for d in rows:
+        d["tags"] = tags.get(d["id"], [])
+    return rows
+
+
 def _set_remaining(conn: sqlite3.Connection, r: sqlite3.Row, remaining: float, job: str) -> None:
     """Store a new grams-left figure; a decrease is logged as usage (so weighing tracks consumption)."""
     if remaining < r["remaining_g"] - 0.5:
@@ -148,7 +176,9 @@ mcp = MCPServer(
         "to fill color_hex, sku and the exact color name when adding those brands. When the "
         "user gives a SKU or color code, look it up with catalog_colors(sku=...). If a Wi-Fi "
         "scale is configured, weigh_spool reads it and sets the grams left (scale reading minus "
-        "the empty spool); use it when the user puts a spool on the scale."
+        "the empty spool); use it when the user puts a spool on the scale. Spools can have NFC "
+        "tags (link_tag / unlink_tag); a linked spool placed on the scale is weighed "
+        "automatically, and spool_on_scale shows what is on it."
     ),
 )
 
@@ -222,7 +252,7 @@ def list_spools(
 ) -> list[dict[str, Any]]:
     """Find spools. Text filters are case-insensitive substring matches.
 
-    search: free text; every word must match brand, material, color, SKU, location or printer.
+    search: free text; every word must match brand, material, color, SKU, location, printer or tag ID.
     status: "all" (default), "stock" (on the shelf) or "loaded" (unloaded onto a printer).
     include_empty: also show spools with 0 g left (hidden by default).
     max_remaining_g: only spools with at most this many grams left (e.g. 200 to find low stock).
@@ -231,8 +261,9 @@ def list_spools(
     args: list[Any] = []
     for word in (search or "").split():
         sql += (" AND (brand LIKE ? OR material LIKE ? OR color LIKE ? OR location LIKE ?"
-                " OR printer LIKE ? OR sku LIKE ?)")
-        args += [f"%{word}%"] * 6
+                " OR printer LIKE ? OR sku LIKE ?"
+                " OR id IN (SELECT spool_id FROM spool_tags WHERE uid LIKE ?))")
+        args += [f"%{word}%"] * 7
     for col, val in (("material", material), ("color", color), ("brand", brand)):
         if val:
             sql += f" AND {col} LIKE ?"
@@ -250,7 +281,7 @@ def list_spools(
         args.append(max_remaining_g)
     sql += " ORDER BY material, color, brand, remaining_g"
     with db() as conn:
-        return [_row(r) for r in conn.execute(sql, args)]
+        return _with_tags(conn, [_row(r) for r in conn.execute(sql, args)])
 
 
 @mcp.tool()
@@ -323,6 +354,11 @@ def _scale_call(path: str, method: str = "GET") -> dict[str, Any]:
     try:
         with urllib.request.urlopen(req, timeout=4) as resp:
             body = resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise ToolError(f"The scale has no '{path.split('/')[-1]}' "
+                            "(its firmware may be older than this feature)") from e
+        raise ToolError(f"The scale answered HTTP {e.code} for {path}") from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise ToolError(f"Scale not reachable at {SCALE_URL}: {getattr(e, 'reason', e)}") from e
     try:
@@ -390,11 +426,147 @@ def weigh_spool(spool_id: int, empty_spool_g: float | None = None, return_to_sto
         return {**_row(_get(conn, spool_id)), "scale_gross_g": gross}
 
 
+# ---------------------------------------------------------------- NFC tags on the scale
+def current_tag() -> str:
+    """ID of the NFC tag lying on the scale's reader, or '' when there is none."""
+    d = _scale_call(f"/text_sensor/{SCALE_TAG}")
+    return norm_tag(str(d.get("value") or d.get("state") or ""))
+
+
+def spool_for_tag(uid: str) -> dict[str, Any] | None:
+    with db() as conn:
+        t = conn.execute("SELECT spool_id FROM spool_tags WHERE uid = ?", (norm_tag(uid),)).fetchone()
+        return _with_tags(conn, [_row(_get(conn, t["spool_id"]))])[0] if t else None
+
+
+@mcp.tool()
+def link_tag(spool_id: int, tag_uid: str | None = None) -> dict[str, Any]:
+    """Link an NFC/RFID tag to a spool, so putting it on the scale weighs it automatically.
+
+    tag_uid: the tag ID (e.g. "04-A1-B2-C3"); omit it to use the tag lying on the scale right now.
+    A spool can have several tags (Bambu Lab spools have one on each side). A tag linked to
+    another spool is moved to this one.
+    """
+    uid = norm_tag(tag_uid) if tag_uid else current_tag()
+    if not uid:
+        raise ToolError("No tag on the reader: put the spool (tag side down) on the scale and try again")
+    with db() as conn:
+        _get(conn, spool_id)
+        prev = conn.execute("SELECT spool_id FROM spool_tags WHERE uid = ?", (uid,)).fetchone()
+        conn.execute("INSERT OR REPLACE INTO spool_tags (uid, spool_id, linked_at) VALUES (?,?,?)",
+                     (uid, spool_id, _now()))
+        d = _with_tags(conn, [_row(_get(conn, spool_id))])[0]
+        d["linked_tag"] = uid
+        if prev and prev["spool_id"] != spool_id:
+            d["moved_from_spool"] = prev["spool_id"]
+        return d
+
+
+@mcp.tool()
+def unlink_tag(spool_id: int, tag_uid: str | None = None) -> dict[str, Any]:
+    """Remove an NFC tag from a spool (or all of its tags when tag_uid is omitted)."""
+    with db() as conn:
+        _get(conn, spool_id)
+        if tag_uid:
+            conn.execute("DELETE FROM spool_tags WHERE spool_id = ? AND uid = ?", (spool_id, norm_tag(tag_uid)))
+        else:
+            conn.execute("DELETE FROM spool_tags WHERE spool_id = ?", (spool_id,))
+        return _with_tags(conn, [_row(_get(conn, spool_id))])[0]
+
+
+@mcp.tool()
+def spool_on_scale() -> dict[str, Any]:
+    """What is on the Wi-Fi scale now: the NFC tag ID, the spool it is linked to (if any), and
+    the latest automatic weighings."""
+    uid = current_tag()
+    return {"tag": uid or None, "spool": spool_for_tag(uid) if uid else None,
+            "recent_activity": watcher.recent(5)}
+
+
+class ScaleWatcher:
+    """Background loop: when a tagged spool is put on the scale, weigh it automatically.
+
+    A linked spool gets its grams left saved (and goes back to stock if it was on a printer);
+    an unknown tag is reported so the web app can offer to link it. Each tag is handled once
+    per placement: lift the spool off the reader to weigh it again."""
+
+    def __init__(self) -> None:
+        self.events: deque[dict[str, Any]] = deque(maxlen=50)
+        self.seq = 0
+        self.lock = threading.Lock()
+        self.handled = ""
+
+    def add(self, kind: str, **fields: Any) -> dict[str, Any]:
+        with self.lock:
+            self.seq += 1
+            ev = {"seq": self.seq, "at": _now(), "kind": kind, **fields}
+            self.events.append(ev)
+            return ev
+
+    def since(self, seq: int) -> list[dict[str, Any]]:
+        with self.lock:
+            return [e for e in self.events if e["seq"] > seq]
+
+    def recent(self, n: int) -> list[dict[str, Any]]:
+        with self.lock:
+            return list(self.events)[-n:]
+
+    def run(self) -> None:
+        while True:
+            try:
+                uid = current_tag()
+            except ToolError:
+                time.sleep(10)  # scale offline, or firmware without NFC
+                continue
+            if not uid:
+                self.handled = ""
+            elif uid != self.handled:
+                self.handled = uid
+                try:
+                    self.handle(uid)
+                except Exception as e:  # keep the loop alive whatever happens
+                    self.add("error", uid=uid, message=str(e))
+            time.sleep(1)
+
+    def handle(self, uid: str) -> None:
+        spool = spool_for_tag(uid)
+        if spool is None:
+            self.add("unknown_tag", uid=uid, message=f"Unknown tag {uid}: link it to a spool")
+            return
+        title = " · ".join(x for x in (spool["brand"], spool["material"], spool["color"]) if x)
+        base = {"uid": uid, "spool_id": spool["id"], "title": title}
+        deadline = time.time() + 15
+        while True:  # wait for the spool to settle
+            if current_tag() != uid:
+                return  # taken off again before a steady reading
+            r = read_scale()
+            if r["stable"] and r["gross_g"] >= 20:
+                break
+            if time.time() > deadline:
+                self.add("error", **base, message=f"{title}: no steady reading; lift it off and put it back")
+                return
+            time.sleep(0.4)
+        was_on = spool["printer"]
+        try:
+            res = weigh_spool(spool["id"], return_to_stock=True)
+        except ToolError as e:
+            msg = str(e)
+            if msg.startswith("Empty-spool weight unknown"):
+                msg = "set its empty-spool weight once (tap ⚖ Weigh on it), then put it back"
+            self.add("error", **base, message=f"{title}: {msg}")
+            return
+        msg = f"{title}: {round(res['remaining_g'])} g left" + (f", back in stock from {was_on}" if was_on else "")
+        self.add("returned" if was_on else "weighed", **base, remaining_g=res["remaining_g"], message=msg)
+
+
+watcher = ScaleWatcher()
+
+
 @mcp.tool()
 def get_spool(spool_id: int) -> dict[str, Any]:
-    """Get one spool by id, including its recent usage and printer history."""
+    """Get one spool by id, including its recent usage and printer history and its NFC tags."""
     with db() as conn:
-        d = _row(_get(conn, spool_id))
+        d = _with_tags(conn, [_row(_get(conn, spool_id))])[0]
         d["usage"] = [dict(r) for r in conn.execute(
             "SELECT grams, job, at FROM usage_log WHERE spool_id = ? ORDER BY at DESC LIMIT 20",
             (spool_id,))]
@@ -715,12 +887,28 @@ def build_web_app():
     async def options(_: Request):
         return JSONResponse(_options())
 
+    async def scale_events(request: Request):
+        """Automatic weighings since `since` (omit it to just get the current position)."""
+        since = request.query_params.get("since")
+        evs = watcher.since(int(since)) if since not in (None, "") else []
+        return JSONResponse({"seq": watcher.seq, "events": evs})
+
+    async def scale_tag(_: Request):
+        if not SCALE_URL:
+            return JSONResponse({"configured": False, "uid": None})
+        try:
+            uid = await run_in_threadpool(current_tag)
+        except ToolError as e:
+            return JSONResponse({"configured": True, "error": str(e)}, status_code=502)
+        return JSONResponse({"configured": True, "uid": uid or None,
+                             "spool": spool_for_tag(uid) if uid else None})
+
     async def catalog(_: Request):
         return JSONResponse(_catalog(), headers={"Cache-Control": "no-cache"})
 
     async def spool_action(request: Request):
         action = request.path_params["action"]
-        if action not in ("unload", "return", "weigh"):
+        if action not in ("unload", "return", "weigh", "link", "unlink"):
             return JSONResponse({"error": "unknown action"}, status_code=404)
         try:
             sid = int(request.path_params["spool_id"])
@@ -732,6 +920,10 @@ def build_web_app():
                 loc = body.get("location")
                 result = return_spool(sid, opt("remaining_g"), None if loc is None else str(loc),
                                       opt("empty_spool_g"))
+            elif action == "link":  # tag_uid omitted: the tag lying on the scale now
+                result = await run_in_threadpool(link_tag, sid, body.get("tag_uid") or None)
+            elif action == "unlink":
+                result = unlink_tag(sid, body.get("tag_uid") or None)
             else:  # weigh: save a grams-left figure the page computed from a scale reading
                 if opt("remaining_g") is None:
                     raise ToolError("remaining_g is required")
@@ -744,7 +936,7 @@ def build_web_app():
         if not SCALE_URL:
             return JSONResponse({"configured": False})
         if request.query_params.get("probe"):
-            return JSONResponse({"configured": True})
+            return JSONResponse({"configured": True, "auto": SCALE_AUTO})
         try:
             if request.method == "POST":
                 return JSONResponse({"configured": True, "message": await run_in_threadpool(tare_scale)})
@@ -763,6 +955,8 @@ def build_web_app():
         Route("/api/spools/{spool_id:int}/{action:str}", spool_action, methods=["POST"]),
         Route("/api/scale", scale, methods=["GET"]),
         Route("/api/scale/tare", scale, methods=["POST"]),
+        Route("/api/scale/events", scale_events),
+        Route("/api/scale/tag", scale_tag),
     ])
 
 
@@ -804,6 +998,8 @@ def _run_http() -> None:
     token = os.environ.get("FILAMENT_TOKEN", "")
     if not token:
         print("WARNING: FILAMENT_TOKEN not set; HTTP endpoints are unauthenticated", file=sys.stderr)
+    if SCALE_URL and SCALE_AUTO:
+        threading.Thread(target=watcher.run, name="scale-watcher", daemon=True).start()
     uvicorn.run(build_http_app(token), host=host, port=port, log_level="info")
 
 

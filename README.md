@@ -11,7 +11,8 @@ plus an **MCP server** so Claude (or any MCP client) can read and update the sam
   Sunlu, Polymaker and Geeetech** (about 1,800 colors and over 2,200 SKUs, including refills and
   2.85 mm variants).
 - **Wi-Fi scale (optional)** — put a spool on a DIY ESP32 scale, tap **Weigh**, and the grams left
-  (reading minus the empty spool) are saved; each decrease is logged as usage.
+  (reading minus the empty spool) are saved; each decrease is logged as usage. With an **NFC
+  reader**, a tagged spool is recognized and weighed automatically as soon as you put it down.
 - **Phone-friendly** — works in iPhone Safari and Android Chrome; use *Add to Home Screen* to open
   it full-screen like an app.
 - **Claude integration** — ask "how much black PLA do I have?", "put the blue Polymaker on the
@@ -39,6 +40,8 @@ stdio instead (for local MCP clients).
 | `FILAMENT_TOKEN` | *(unset)* | Bearer token required for `/api` and `/mcp` (strongly recommended) |
 | `FILAMENT_SCALE_URL` | *(unset)* | Wi-Fi scale address, e.g. `http://192.168.1.50` (enables Weigh) |
 | `FILAMENT_SCALE_SENSOR` / `FILAMENT_SCALE_TARE` | `Spool Weight` / `Tare` | Names of the scale's sensor and tare button |
+| `FILAMENT_SCALE_TAG` | `Spool Tag` | Name of the scale's NFC tag sensor |
+| `FILAMENT_SCALE_AUTO` | `1` | `0` turns off automatic weighing of tagged spools |
 
 ## Deploy to a Linux server (systemd)
 
@@ -80,6 +83,8 @@ claude mcp add --transport http --scope user filament http://myserver:8765/mcp -
 | `catalog_colors` | Look up catalog colors by brand, type, name or **SKU** |
 | `weigh_spool` | Weigh a spool on the Wi-Fi scale and save grams left (optionally return it to stock) |
 | `read_scale` / `tare_scale` | Read or zero the Wi-Fi scale |
+| `link_tag` / `unlink_tag` | Link an NFC tag to a spool (the one on the reader if no ID is given) / remove it |
+| `spool_on_scale` | The tag and spool on the scale now, plus recent automatic weighings |
 
 ## Wi-Fi scale (optional)
 
@@ -131,6 +136,35 @@ catalog (Bambu Lab 250 g, Sunlu 189 g, Geeetech 180 g, Snapmaker 154 g, Polymake
 and can be edited per spool; refills have none, so weigh your reusable spool empty once and
 enter it. To try everything without hardware, run `python3 tools/fake_scale.py` and set
 `FILAMENT_SCALE_URL=http://127.0.0.1:8099`.
+
+### NFC reader (optional)
+
+Add a **PN532 NFC module** to the scale and spools are recognized by their tag: put a linked spool
+on the scale and, once the reading is steady, its grams left are saved — and if it was on a
+printer it goes back to stock. A message appears in the app each time.
+
+**Wiring** — set the PN532's two switches to **I2C** (on the common red "V3" board: switch 1 ON,
+switch 2 OFF), then connect:
+
+| PN532 | ESP32 |
+|---|---|
+| VCC | 3V3 |
+| GND | GND |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+
+Mount the reader under the middle of the platform and lay spools flat on it: the reader only sees
+tags within 2–4 cm, and spool tags sit near the hub. The firmware in `esphome/` already includes
+the reader; re-run `esphome run esphome/filament-scale.yaml` after wiring it.
+
+**Tags** — Bambu Lab spools have a built-in RFID tag on each side (link both, so either side works);
+Snapmaker "RFID" spools have one too. For other spools, stick an NTAG213/215 NFC sticker on the
+spool (or on the reusable spool of a refill). Only the tag's ID is used, so any tag works.
+
+**Linking** — put a spool on the scale. An unknown tag shows a banner in the app: tap **Link to
+a spool**, then **Link this tag** on the right spool. You can also tap **🏷 Link tag** on a spool
+while it is on the scale, or ask Claude. Tap a spool's 🏷 badge to remove its tag link. Each
+placement is weighed once; lift the spool off and put it back to weigh it again.
 
 ## Color catalog
 
